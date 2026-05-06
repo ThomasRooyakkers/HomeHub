@@ -10,11 +10,11 @@ import CalendarView from "./components/CalendarView";
 import "./App.css";
 
 const HOME_TOOLS = [
-  { id: "dashboard",   name: "Dashboard",        icon: "📊", description: "Overview of paid bills, meal plans, home tasks and calendar events.", active: true },
-  { id: "invoices",    name: "Invoice Tracker",   icon: "🧾", description: "Track household bills, due dates, and payment status.",             active: true },
-  { id: "meal",        name: "Meal Planner",      icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true },
-  { id: "maintenance", name: "Home Maintenance",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true },
-  { id: "calendar",    name: "Calendar",          icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
+  { id: "dashboard",   name: "Dashboard",        shortName: "Dashboard", icon: "📊", description: "Overview of paid bills, meal plans, home tasks and calendar events.", active: true },
+  { id: "invoices",    name: "Invoice Tracker",   shortName: "Invoices",  icon: "🧾", description: "Track household bills, due dates, and payment status.",             active: true },
+  { id: "meal",        name: "Meal Planner",      shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true },
+  { id: "maintenance", name: "Home Maintenance",  shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true },
+  { id: "calendar",    name: "Calendar",          shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
 ];
 
 const SAMPLE_INVOICES = [
