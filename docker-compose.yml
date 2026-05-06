@@ -5,7 +5,7 @@ services:
     container_name: invoice-tracker
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "5080:80"
     volumes:
       - invoice_data:/data
 
