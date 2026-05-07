@@ -7,6 +7,7 @@ import InvoiceTracker from "./components/InvoiceTracker";
 import MealPlanner from "./components/MealPlanner";
 import Maintenance from "./components/Maintenance";
 import CalendarView from "./components/CalendarView";
+import PlantManager from "./components/PlantManager";
 import "./App.css";
 
 const HOME_TOOLS = [
@@ -15,6 +16,7 @@ const HOME_TOOLS = [
   { id: "meal",        name: "Meal Planner",      shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true },
   { id: "maintenance", name: "Home Maintenance",  shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true },
   { id: "calendar",    name: "Calendar",          shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
+  { id: "plants",      name: "Plant Manager",     shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true },
 ];
 
 const SAMPLE_INVOICES = [
@@ -32,6 +34,10 @@ const SAMPLE_MAINTENANCE = [
   { id: 1, title: "Check Smoke Detectors", frequency: "monthly", nextDue: new Date().toISOString().slice(0, 10), instructions: "Test each smoke detector in the house and replace batteries if needed.", photo: null, completed: false },
 ];
 
+const SAMPLE_PLANTS = [
+  { id: 1, name: "Basil", wateringFrequency: "weekly", lastWatered: "", feedingFrequency: "monthly", lastFed: "", notes: "Keep in sunny window, pinch leaves regularly." },
+];
+
 const loadLocal = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key) || "null") || fallback; } catch { return fallback; }
 };
@@ -44,6 +50,7 @@ export default function App() {
   const [maintenanceTasks, setMaintenance]  = useState(() => loadLocal("maintenanceTasks",  SAMPLE_MAINTENANCE));
   const [calendarProviders, setCalProviders]= useState(() => loadLocal("calendarProviders", []));
   const [calendarEvents, setCalEvents]      = useState(() => loadLocal("calendarEvents",    []));
+  const [plants, setPlants]                 = useState(() => loadLocal("plants",             SAMPLE_PLANTS));
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [toast, setToast]                   = useState(null);
 
@@ -59,6 +66,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("maintenanceTasks",  JSON.stringify(maintenanceTasks)); } catch {} }, [maintenanceTasks]);
   useEffect(() => { try { localStorage.setItem("calendarProviders", JSON.stringify(calendarProviders));} catch {} }, [calendarProviders]);
   useEffect(() => { try { localStorage.setItem("calendarEvents",    JSON.stringify(calendarEvents));   } catch {} }, [calendarEvents]);
+  useEffect(() => { try { localStorage.setItem("plants",            JSON.stringify(plants));           } catch {} }, [plants]);
 
   // Load from backend once on mount
   useEffect(() => {
@@ -67,12 +75,13 @@ export default function App() {
       if (!ping?.ok) return;
       setApiEnabled(true);
 
-      const [invoiceData, recipeData, mealData, maintenanceData, calendarData] = await Promise.all([
+      const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData] = await Promise.all([
         apiFetch("/api/invoices"),
         apiFetch("/api/recipes"),
         apiFetch("/api/meal-plan"),
         apiFetch("/api/maintenance"),
         apiFetch("/api/calendar"),
+        apiFetch("/api/plants"),
       ]);
 
       if (invoiceData)   setInvoices(invoiceData);
@@ -83,6 +92,7 @@ export default function App() {
         setCalProviders(calendarData.providers || []);
         setCalEvents(calendarData.events || []);
       }
+      if (plantData)     setPlants(plantData);
     })();
   }, []);
 
@@ -188,6 +198,9 @@ export default function App() {
               apiEnabled={apiEnabled} showToast={showToast}
               onRefresh={refreshCalendars}
             />
+          )}
+          {activeTool === "plants" && (
+            <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />
           )}
         </main>
       </div>
