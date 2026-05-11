@@ -143,7 +143,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
         {filtered.map(inv => {
           const s = statusStyle(displayStatus(inv));
           return (
-            <div key={inv.id} style={{ background: "linear-gradient(135deg, #f8fafc, #f1f5f9)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 16, padding: "20px 24px", display: "flex", alignItems: "center", gap: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+            <div key={inv.id} style={{ background: "linear-gradient(135deg, #f8fafc, #f1f5f9)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 16, padding: "20px 24px", display: "flex", alignItems: "center", gap: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.05)", flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 700, fontSize: 18, color: "#166534" }}>{inv.vendor}</span>
@@ -157,7 +157,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
                 </div>
               </div>
               <div style={{ fontSize: 20, fontWeight: 800, color: "#166534", minWidth: 100, textAlign: "right" }}>{fmt(inv.amount)}</div>
-              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                 <button onClick={() => togglePaid(inv.id)} title={inv.status === "paid" ? "Mark unpaid" : "Mark paid"} style={{ background: inv.status === "paid" ? "rgba(34,197,94,0.1)" : "rgba(22,163,74,0.1)", border: "1px solid rgba(34,197,94,0.2)", color: "#16a34a", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 16 }}>
                   {inv.status === "paid" ? "✓" : "○"}
                 </button>
@@ -234,6 +234,6 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
 const labelStyle = { fontSize: 14, color: "#4b5563", display: "block", marginBottom: 6, fontWeight: 600 };
 const inputStyle = { width: "100%", background: "rgba(255,255,255,0.9)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 12, padding: "12px 16px", color: "#166534", fontSize: 15, boxSizing: "border-box", transition: "all 0.2s ease" };
 const uploadBtnStyle = { background: "rgba(255,255,255,0.9)", border: "2px dashed rgba(34,197,94,0.3)", borderRadius: 12, padding: "16px", color: "#16a34a", cursor: "pointer", fontSize: 14, width: "100%", fontWeight: 600 };
-const modalFooterStyle = { display: "flex", gap: 12, marginTop: 24 };
+const modalFooterStyle = { display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" };
 const cancelBtnStyle = { flex: 1, padding: "14px", background: "rgba(255,255,255,0.9)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 12, color: "#64748b", cursor: "pointer", fontSize: 15, fontWeight: 600 };
 const primaryBtnStyle = { flex: 2, padding: "14px", background: "linear-gradient(135deg, #16a34a, #22c55e)", border: "none", borderRadius: 12, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, boxShadow: "0 4px 12px rgba(22,163,74,0.3)" };

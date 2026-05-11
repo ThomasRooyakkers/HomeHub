@@ -27,7 +27,7 @@ function InvoiceRow({ inv, onToggle, urgent }) {
     ? Math.ceil((new Date(inv.dueDate) - new Date()) / 86400000)
     : null;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#fff", borderRadius: 14, border: `1px solid ${urgent ? "rgba(220,38,38,0.1)" : "rgba(245,158,11,0.12)"}` }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#fff", borderRadius: 14, border: `1px solid ${urgent ? "rgba(220,38,38,0.1)" : "rgba(245,158,11,0.12)"}`, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{inv.vendor}</span>
@@ -54,7 +54,7 @@ function InvoiceRow({ inv, onToggle, urgent }) {
 function MaintenanceRow({ task, onToggle }) {
   const isOverdue = task.nextDue && new Date(task.nextDue) < new Date();
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#fff", borderRadius: 14, border: `1px solid ${isOverdue ? "rgba(220,38,38,0.1)" : "rgba(245,158,11,0.12)"}` }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#fff", borderRadius: 14, border: `1px solid ${isOverdue ? "rgba(220,38,38,0.1)" : "rgba(245,158,11,0.12)"}`, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{task.title}</span>
         <p style={{ margin: "3px 0 0", fontSize: 12, color: isOverdue ? "#b91c1c" : "#92400e" }}>
@@ -76,7 +76,8 @@ function MaintenanceRow({ task, onToggle }) {
 
 export default function Dashboard({
   invoices, mealPlan, recipes, maintenanceTasks,
-  calendarEvents, onNavigate,
+  calendarEvents, weatherData, weatherHourly,
+  onNavigate,
   onToggleInvoicePaid, onToggleMaintenanceDone,
 }) {
   const todayKey = useTodayKey();
@@ -234,6 +235,39 @@ export default function Dashboard({
                   Plan dinner
                 </button>
               </div>
+            )}
+          </div>
+
+          {/* Weather summary */}
+          <div style={{ background: "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 20, padding: 18, boxShadow: "0 4px 16px rgba(22,163,74,0.06)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#166534" }}>☁️ Weather</h3>
+              <button onClick={() => onNavigate("weather")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Forecast →</button>
+            </div>
+            {weatherData ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#166534" }}>{Math.round(weatherData.temperature)}°C</p>
+                    <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>Houthalen-Helchteren</p>
+                  </div>
+                  <div style={{ display: "grid", gap: 6, minWidth: 100 }}>
+                    <span style={{ color: "#64748b", fontSize: 12 }}>Wind {Math.round(weatherData.windspeed)} km/h</span>
+                    <span style={{ color: "#64748b", fontSize: 12 }}>Updated {fmtDate(weatherData.time)}</span>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 8, marginTop: 12 }}>
+                  {weatherHourly.slice(0, 3).map(item => (
+                    <div key={item.time} style={{ background: "#f8fafc", borderRadius: 12, padding: 10, textAlign: "center" }}>
+                      <p style={{ margin: 0, fontSize: 11, color: "#64748b" }}>{new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                      <p style={{ margin: "6px 0 0", fontSize: 14, fontWeight: 700, color: "#166534" }}>{Math.round(item.temperature)}°C</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>{item.precipitationProbability}% rain</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>Weather data is loading or unavailable.</p>
             )}
           </div>
 

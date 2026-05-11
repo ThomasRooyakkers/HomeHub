@@ -7,6 +7,11 @@ body {
   background: #eef2f7;
 }
 
+html, body, #root {
+  min-height: 100%;
+  width: 100%;
+}
+
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
 .app-root {
@@ -106,6 +111,9 @@ body {
   padding: 32px;
   width: 100%;
   max-width: 520px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
 }
 
@@ -243,7 +251,7 @@ body {
     margin-bottom: calc(72px + env(safe-area-inset-bottom));
   }
 
-  .stats-grid, .stats-grid-3 { grid-template-columns: 1fr 1fr; }
+  .stats-grid, .stats-grid-3 { grid-template-columns: 1fr; }
 
   .modal-box { padding: 20px; }
 }

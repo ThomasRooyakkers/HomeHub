@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { apiFetch } from "./lib/api";
 import Toast from "./components/Toast";
 import Sidebar from "./components/Sidebar";
@@ -8,6 +8,7 @@ import MealPlanner from "./components/MealPlanner";
 import Maintenance from "./components/Maintenance";
 import CalendarView from "./components/CalendarView";
 import PlantManager from "./components/PlantManager";
+import Weather from "./components/Weather";
 import "./App.css";
 
 const HOME_TOOLS = [
@@ -16,6 +17,7 @@ const HOME_TOOLS = [
   { id: "meal",        name: "Meal Planner",      shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true },
   { id: "maintenance", name: "Home Maintenance",  shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true },
   { id: "calendar",    name: "Calendar",          shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
+  { id: "weather",     name: "Weather",           shortName: "Weather",   icon: "☁️", description: "Current conditions and hourly forecast for Houthalen-Helchteren.", active: true },
   { id: "plants",      name: "Plant Manager",     shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true },
 ];
 
@@ -51,6 +53,9 @@ export default function App() {
   const [calendarProviders, setCalProviders]= useState(() => loadLocal("calendarProviders", []));
   const [calendarEvents, setCalEvents]      = useState(() => loadLocal("calendarEvents",    []));
   const [plants, setPlants]                 = useState(() => loadLocal("plants",             SAMPLE_PLANTS));
+  const [weatherData, setWeatherData]       = useState(null);
+  const [weatherHourly, setWeatherHourly]   = useState([]);
+  const [weatherError, setWeatherError]     = useState(null);
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [toast, setToast]                   = useState(null);
 
@@ -68,9 +73,66 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("calendarEvents",    JSON.stringify(calendarEvents));   } catch {} }, [calendarEvents]);
   useEffect(() => { try { localStorage.setItem("plants",            JSON.stringify(plants));           } catch {} }, [plants]);
 
+  const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast?latitude=51.05&longitude=5.45&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=Europe%2FBrussels";
+
+  const loadWeather = useCallback(async () => {
+    setWeatherError(null);
+    let data = null;
+
+    if (apiEnabled) {
+      data = await apiFetch("/api/weather");
+    }
+
+    if (!data) {
+      try {
+        const response = await fetch(OPEN_METEO_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const now = new Date();
+        const hourly = (payload.hourly?.time || []).map((time, index) => ({
+          time,
+          temperature: payload.hourly.temperature_2m?.[index],
+          precipitationProbability: payload.hourly.precipitation_probability?.[index],
+          weathercode: payload.hourly.weathercode?.[index],
+          windspeed: payload.hourly.windspeed_10m?.[index],
+        })).filter(item => new Date(item.time) >= now).slice(0, 24);
+
+        data = {
+          location: "Houthalen-Helchteren, BE",
+          current: {
+            temperature: payload.current_weather?.temperature,
+            windspeed: payload.current_weather?.windspeed,
+            weathercode: payload.current_weather?.weathercode,
+            time: payload.current_weather?.time,
+          },
+          hourly,
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        setWeatherError("Unable to load weather data.");
+      }
+    }
+
+    if (data) {
+      setWeatherData(data.current || null);
+      setWeatherHourly(data.hourly || []);
+    }
+  }, [apiEnabled]);
+
+  const refreshWeather = async () => {
+    await loadWeather();
+    showToast("Weather refreshed");
+  };
+
+  useEffect(() => {
+    loadWeather();
+    const intervalId = setInterval(loadWeather, 60 * 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, [loadWeather]);
+
   // Load from backend once on mount
   useEffect(() => {
-    (async () => {
+    const loadData = async () => {
       const ping = await apiFetch("/api/ping");
       if (!ping?.ok) return;
       setApiEnabled(true);
@@ -84,16 +146,18 @@ export default function App() {
         apiFetch("/api/plants"),
       ]);
 
-      if (invoiceData)   setInvoices(invoiceData);
-      if (recipeData)    setRecipes(recipeData);
-      if (mealData)      setMealPlan(mealData);
+      if (invoiceData) setInvoices(invoiceData);
+      if (recipeData) setRecipes(recipeData);
+      if (mealData) setMealPlan(mealData);
       if (maintenanceData) setMaintenance(maintenanceData);
       if (calendarData) {
         setCalProviders(calendarData.providers || []);
         setCalEvents(calendarData.events || []);
       }
-      if (plantData)     setPlants(plantData);
-    })();
+      if (plantData) setPlants(plantData);
+    };
+
+    loadData();
   }, []);
 
   const refreshCalendars = async () => {
@@ -177,6 +241,7 @@ export default function App() {
             <Dashboard
               invoices={invoices} mealPlan={mealPlan} recipes={recipes}
               maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
+              weatherData={weatherData} weatherHourly={weatherHourly}
               onNavigate={setActiveTool}
               onToggleInvoicePaid={toggleInvoicePaid}
               onToggleMaintenanceDone={toggleMaintenanceDone}
@@ -198,6 +263,9 @@ export default function App() {
               apiEnabled={apiEnabled} showToast={showToast}
               onRefresh={refreshCalendars}
             />
+          )}
+          {activeTool === "weather" && (
+            <Weather weatherData={weatherData} hourly={weatherHourly} onRefresh={refreshWeather} error={weatherError} />
           )}
           {activeTool === "plants" && (
             <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />

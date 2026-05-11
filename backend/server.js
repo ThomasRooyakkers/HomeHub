@@ -1,4 +1,5 @@
 const express = require("express");
+const https = require("https");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
@@ -130,6 +131,51 @@ const parseICS = (content, provider) => {
 
   return events;
 };
+
+const fetchJson = (url) => new Promise((resolve, reject) => {
+  https.get(url, (res) => {
+    let data = "";
+    res.setEncoding("utf8");
+    res.on("data", (chunk) => { data += chunk; });
+    res.on("end", () => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        try { resolve(JSON.parse(data)); } catch (error) { reject(error); }
+      } else {
+        reject(new Error(`HTTP ${res.statusCode}`));
+      }
+    });
+  }).on("error", reject);
+});
+
+app.get("/api/weather", async (_, res) => {
+  const url = "https://api.open-meteo.com/v1/forecast?latitude=51.05&longitude=5.45&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=Europe%2FBrussels";
+  try {
+    const payload = await fetchJson(url);
+    const now = new Date();
+    const hourly = (payload.hourly?.time || []).map((time, index) => ({
+      time,
+      temperature: payload.hourly.temperature_2m?.[index],
+      precipitationProbability: payload.hourly.precipitation_probability?.[index],
+      weathercode: payload.hourly.weathercode?.[index],
+      windspeed: payload.hourly.windspeed_10m?.[index],
+    })).filter(item => new Date(item.time) >= now).slice(0, 24);
+
+    res.json({
+      location: "Houthalen-Helchteren, BE",
+      current: {
+        temperature: payload.current_weather?.temperature,
+        windspeed: payload.current_weather?.windspeed,
+        weathercode: payload.current_weather?.weathercode,
+        time: payload.current_weather?.time,
+      },
+      hourly,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Weather proxy failed:", error.message);
+    res.status(502).json({ error: "Unable to fetch weather" });
+  }
+});
 
 app.get("/api/ping", (_, res) => res.json({ ok: true }));
 
