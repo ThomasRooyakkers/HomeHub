@@ -440,11 +440,11 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
             </div>
 
             {/* Body */}
-            <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+            <div className="invoice-modal-body">
 
               {/* ── Left: document preview ── */}
               {form.file?.data ? (
-                <div style={{ flex: "0 0 62%", borderRight: "1px solid rgba(34,197,94,0.15)", display: "flex", flexDirection: "column", background: "#1e293b", overflow: "hidden" }}>
+                <div className="invoice-modal-doc">
                   {/* Scrollable preview area */}
                   <div style={{ flex: 1, overflow: "auto", position: "relative", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
                     <div style={{ position: "relative", display: "inline-block", minWidth: "100%" }}>
@@ -517,7 +517,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
                 </div>
               ) : (
                 /* No file yet — show upload prompt in left panel */
-                <div style={{ flex: "0 0 62%", borderRight: "1px solid rgba(34,197,94,0.15)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#1e293b", gap: 12 }}>
+                <div className="invoice-modal-doc" style={{ alignItems: "center", justifyContent: "center", gap: 12 }}>
                   <input ref={fileRef} type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={onFileInput} style={{ display: "none" }} />
                   <button
                     onClick={() => fileRef.current.click()}
@@ -531,7 +531,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
               )}
 
               {/* ── Right: field assignment + form ── */}
-              <div style={{ flex: 1, overflowY: "auto", padding: "24px 24px", display: "flex", flexDirection: "column", gap: 16, background: "#f8fafc" }}>
+              <div className="invoice-modal-form">
 
                 {/* Selected word → field assignment */}
                 {selectedWord ? (

@@ -74,7 +74,7 @@ const getHourlyDisplay = (hourly = []) => {
 
 export default function Weather({ weatherData, hourly, onRefresh, error }) {
   const hourItems = getHourlyDisplay(hourly);
-  const columnWidth = 120;
+  const columnWidth = 96;
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -134,7 +134,7 @@ export default function Weather({ weatherData, hourly, onRefresh, error }) {
           <div style={{ overflowX: "auto", paddingBottom: 8 }}>
             <div style={{ display: "grid", gridAutoFlow: "column", gridTemplateColumns: `repeat(${hourItems.length}, ${columnWidth}px)`, gap: 16 }}>
               {hourItems.map((item) => (
-                <div key={item.time} style={{ background: "#f8fafc", borderRadius: 20, padding: 16, width: columnWidth, display: "grid", gap: 10, alignItems: "center", textAlign: "center" }}>
+                <div key={item.time} style={{ background: "#f8fafc", borderRadius: 20, padding: "14px 10px", width: columnWidth, display: "grid", gap: 8, alignItems: "center", textAlign: "center" }}>
                   <div style={{ width: 48, height: 48, margin: "0 auto", borderRadius: 16, background: "rgba(22,163,74,0.12)", display: "grid", placeItems: "center" }}>
                     <span style={{ fontSize: 24 }}>{weatherIcon(item.weathercode)}</span>
                   </div>

@@ -52,12 +52,13 @@ function MonthGrid({ year, month, events, providers, selectedDay, onDayClick, to
             <button
               key={ds}
               onClick={() => onDayClick(isSel ? null : ds)}
+              className="cal-day-btn"
               style={{
                 background: isSel ? "#16a34a" : isToday ? "rgba(22,163,74,0.1)" : "#fff",
                 border: isSel ? "2px solid #16a34a" : isToday ? "2px solid rgba(22,163,74,0.4)" : "1px solid #e5e7eb",
                 borderRadius: 10, padding: "6px 2px 8px",
                 cursor: "pointer", textAlign: "center",
-                minHeight: 58, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                 transition: "background 0.12s ease",
               }}
               onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "rgba(22,163,74,0.06)"; }}

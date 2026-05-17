@@ -99,7 +99,7 @@ export default function Maintenance({ maintenanceTasks, setMaintenanceTasks, api
       ) : (
         <div style={{ display: "grid", gap: 20 }}>
           {maintenanceTasks.map(task => (
-            <div key={task.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 16, background: "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 20, padding: 24, boxShadow: "0 10px 20px rgba(0,0,0,0.05)" }}>
+            <div key={task.id} className="maintenance-task-row">
               <div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                   <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#166534" }}>{task.title}</h4>
@@ -118,7 +118,7 @@ export default function Maintenance({ maintenanceTasks, setMaintenanceTasks, api
                   </div>
                 )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "flex-start" }}>
+              <div className="maintenance-task-actions">
                 <button onClick={() => toggleCompleted(task.id)} style={{ background: task.completed ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.2)", color: "#16a34a", borderRadius: 12, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
                   {task.completed ? "Mark pending" : "Mark done"}
                 </button>

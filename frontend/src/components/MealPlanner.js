@@ -187,7 +187,7 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
           </div>
           <input type="text" placeholder="🔍 Search recipes..." value={recipeSearchTerm} onChange={e => setRecipeSearchTerm(e.target.value)}
             style={{ width: "100%", background: "rgba(255,255,255,0.9)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 12, padding: "10px 14px", color: "#166534", fontSize: 13, boxSizing: "border-box" }} />
-          <div style={{ display: "grid", gap: 12, maxHeight: 560, overflowY: "auto", paddingRight: 4 }}>
+          <div style={{ display: "grid", gap: 12, maxHeight: "min(560px, 50vh)", overflowY: "auto", paddingRight: 4 }}>
             {filteredRecipes.length === 0 && (
               <div style={{ color: "#94a3b8", fontSize: 13, padding: 20, textAlign: "center" }}>
                 {recipes.length === 0 ? "No recipes yet" : "No matches found"}

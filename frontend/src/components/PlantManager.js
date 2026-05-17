@@ -17,7 +17,7 @@ const inputStyle = { width: "100%", background: "rgba(255,255,255,0.95)", border
 const buttonStyle = { background: "linear-gradient(135deg, #16a34a, #22c55e)", border: "none", color: "#fff", padding: "14px 22px", borderRadius: 999, fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: "0 12px 28px rgba(22,163,74,0.25)" };
 const cancelButtonStyle = { flex: 1, padding: "14px", background: "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 16, color: "#64748b", cursor: "pointer", fontSize: 15, fontWeight: 600 };
 const modalBackdropStyle = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.36)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
-const modalBoxStyle = { background: "rgba(255,255,255,0.98)", backdropFilter: "blur(18px)", border: "1px solid rgba(34,197,94,0.12)", borderRadius: 24, padding: 32, maxWidth: 540, width: "100%", boxShadow: "0 24px 48px rgba(15,23,42,0.16)" };
+const modalBoxStyle = { background: "rgba(255,255,255,0.98)", backdropFilter: "blur(18px)", border: "1px solid rgba(34,197,94,0.12)", borderRadius: 24, padding: 32, maxWidth: 540, width: "100%", boxShadow: "0 24px 48px rgba(15,23,42,0.16)", maxHeight: "calc(100dvh - 64px)", overflowY: "auto" };
 const actionButtonStyle = { background: "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.2)", color: "#16a34a", borderRadius: 14, padding: "12px 16px", cursor: "pointer", fontSize: 14, fontWeight: 700 };
 
 export default function PlantManager({ plants, setPlants, apiEnabled, showToast }) {
@@ -171,7 +171,6 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
   });
 
   const cardHeaderStyle = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" };
-  const cardsGridStyle = { display: "grid", gridTemplateColumns: "repeat(4, minmax(240px, 1fr))", gap: 18 };
   const plantCardStyle = {
     background: "#fbf7ee",
     border: "1px solid rgba(216,207,184,0.55)",
@@ -246,7 +245,7 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
           No plants yet. Add one to start tracking your watering and feeding routine.
         </div>
       ) : (
-        <div style={cardsGridStyle}>
+        <div className="plant-cards-grid">
           {plants.map((plant, index) => {
             const waterDue = getNextDueDate(plant.lastWatered, plant.wateringFrequency);
             const feedDue = getNextDueDate(plant.lastFed, plant.feedingFrequency);
@@ -313,7 +312,7 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
             <div style={{ display: "grid", gap: 18 }}>
               <div>
                 <label style={labelStyle}>Plant image</label>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 12 }}>
                   {PRESET_IMAGES.map(img => (
                     <button
                       key={img.id}
