@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { fmt, fmtDate, displayStatus, useTodayKey } from "../lib/utils";
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
@@ -81,35 +82,51 @@ export default function Dashboard({
   onToggleInvoicePaid, onToggleMaintenanceDone,
 }) {
   const todayKey = useTodayKey();
-  const now = new Date();
-  const sevenDaysOut = new Date(now);
-  sevenDaysOut.setDate(now.getDate() + 7);
+  const now = useMemo(() => new Date(), []);
+  const sevenDaysOut = useMemo(() => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 7);
+    return d;
+  }, [now]);
   const todayMeal = mealPlan[todayKey];
   const getRecipeById = (id) => recipes.find(r => String(r.id) === String(id)) || null;
 
   // Invoice buckets
-  const overdueInvoices = invoices.filter(i => displayStatus(i) === "overdue");
-  const dueSoonInvoices = invoices.filter(i => {
-    if (displayStatus(i) !== "unpaid" || !i.dueDate) return false;
-    const d = new Date(i.dueDate);
-    return d >= now && d <= sevenDaysOut;
-  });
+  const overdueInvoices = useMemo(
+    () => invoices.filter(i => displayStatus(i) === "overdue"),
+    [invoices]
+  );
+  const dueSoonInvoices = useMemo(
+    () => invoices.filter(i => {
+      if (displayStatus(i) !== "unpaid" || !i.dueDate) return false;
+      const d = new Date(i.dueDate);
+      return d >= now && d <= sevenDaysOut;
+    }),
+    [invoices, now, sevenDaysOut]
+  );
 
   // Maintenance bucket — overdue or due within 7 days
-  const maintenanceDue = maintenanceTasks.filter(t => {
-    if (t.completed) return false;
-    return !t.nextDue || new Date(t.nextDue) <= sevenDaysOut;
-  });
+  const maintenanceDue = useMemo(
+    () => maintenanceTasks.filter(t => {
+      if (t.completed) return false;
+      return !t.nextDue || new Date(t.nextDue) <= sevenDaysOut;
+    }),
+    [maintenanceTasks, sevenDaysOut]
+  );
 
-  const upcomingEvents = calendarEvents
-    .map(e => ({ ...e, startDate: new Date(e.start) }))
-    .filter(e => e.startDate >= now)
-    .sort((a, b) => a.startDate - b.startDate)
-    .slice(0, 4);
+  const upcomingEvents = useMemo(
+    () => calendarEvents
+      .map(e => ({ ...e, startDate: new Date(e.start) }))
+      .filter(e => e.startDate >= now)
+      .sort((a, b) => a.startDate - b.startDate)
+      .slice(0, 4),
+    [calendarEvents, now]
+  );
 
-  const totalUnpaid = invoices
-    .filter(i => displayStatus(i) !== "paid")
-    .reduce((a, i) => a + parseFloat(i.amount || 0), 0);
+  const totalUnpaid = useMemo(
+    () => invoices.filter(i => displayStatus(i) !== "paid").reduce((a, i) => a + parseFloat(i.amount || 0), 0),
+    [invoices]
+  );
 
   const allClear = overdueInvoices.length === 0 && dueSoonInvoices.length === 0 && maintenanceDue.length === 0;
 

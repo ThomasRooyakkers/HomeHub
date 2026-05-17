@@ -14,6 +14,7 @@ const isPdfFile = (file) => {
 
 export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, showToast }) {
   const [filter, setFilter] = useState(STATUSES.ALL);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState(null);
   const [step, setStep] = useState(null); // 'upload' | 'edit'
   const [isDragging, setIsDragging] = useState(false);
@@ -256,22 +257,25 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
     const { _file, ...payload } = form;
 
     if (apiEnabled) {
-      const method = form.id ? "PUT" : "POST";
-      const endpoint = form.id ? `/api/invoices/${form.id}` : "/api/invoices";
-      let body, headers;
-      if (_file) {
-        body = new FormData();
-        body.append("data", JSON.stringify({ ...payload, file: null }));
-        body.append("file", _file);
-      } else {
-        body = JSON.stringify(payload);
-        headers = { "Content-Type": "application/json" };
-      }
-      const result = await apiFetch(endpoint, { method, body, headers });
-      if (result) {
+      try {
+        const method = form.id ? "PUT" : "POST";
+        const endpoint = form.id ? `/api/invoices/${form.id}` : "/api/invoices";
+        let body, headers;
+        if (_file) {
+          body = new FormData();
+          body.append("data", JSON.stringify({ ...payload, file: null }));
+          body.append("file", _file);
+        } else {
+          body = JSON.stringify(payload);
+          headers = { "Content-Type": "application/json" };
+        }
+        const result = await apiFetch(endpoint, { method, body, headers });
         setInvoices((prev) => form.id ? prev.map((i) => i.id === form.id ? result : i) : [...prev, result]);
         showToast(form.id ? "Invoice updated" : "Invoice added");
         closeModal();
+        return;
+      } catch (err) {
+        showToast(err.message || "Request failed", "danger");
         return;
       }
     }
@@ -290,17 +294,32 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
     if (!invoice) return;
     const updated = { ...invoice, status: invoice.status === "paid" ? "unpaid" : "paid" };
     if (apiEnabled) {
-      const result = await apiFetch(`/api/invoices/${id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
-      });
-      if (result) { setInvoices((prev) => prev.map((i) => i.id === id ? result : i)); showToast("Status updated"); return; }
+      try {
+        const result = await apiFetch(`/api/invoices/${id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+        });
+        setInvoices((prev) => prev.map((i) => i.id === id ? result : i));
+        showToast("Status updated");
+        return;
+      } catch (err) {
+        showToast(err.message || "Update failed", "danger");
+        return;
+      }
     }
     setInvoices((prev) => prev.map((i) => i.id === id ? updated : i));
     showToast("Status updated");
   };
 
   const confirmDelete = async () => {
-    if (apiEnabled) await apiFetch(`/api/invoices/${deleteId}`, { method: "DELETE" });
+    if (apiEnabled) {
+      try {
+        await apiFetch(`/api/invoices/${deleteId}`, { method: "DELETE" });
+      } catch (err) {
+        showToast(err.message || "Delete failed", "danger");
+        setDeleteId(null);
+        return;
+      }
+    }
     setInvoices((prev) => prev.filter((i) => i.id !== deleteId));
     setDeleteId(null);
     showToast("Invoice deleted", "danger");
@@ -309,7 +328,10 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
   const totalUnpaid = invoices.filter((i) => displayStatus(i) !== "paid").reduce((a, i) => a + parseFloat(i.amount || 0), 0);
   const totalPaid = invoices.filter((i) => i.status === "paid").reduce((a, i) => a + parseFloat(i.amount || 0), 0);
   const overdueCount = invoices.filter((i) => displayStatus(i) === "overdue").length;
-  const filtered = invoices.filter((inv) => filter === STATUSES.ALL || displayStatus(inv) === filter);
+  const q = search.trim().toLowerCase();
+  const filtered = invoices
+    .filter((inv) => filter === STATUSES.ALL || displayStatus(inv) === filter)
+    .filter((inv) => !q || [inv.vendor, inv.notes, inv.invoiceNo, inv.category].some(f => f?.toLowerCase().includes(q)));
   const isPdf = isPdfFile(form?.file);
 
   return (
@@ -340,9 +362,9 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       </div>
 
       {/* ── Filters ────────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap", alignItems: "center" }}>
         {[["All", STATUSES.ALL], ["Unpaid", STATUSES.UNPAID], ["Paid", STATUSES.PAID], ["Overdue", STATUSES.OVERDUE]].map(([label, val]) => (
-          <button key={val} onClick={() => setFilter(val)} style={{
+          <button key={val} onClick={() => { setFilter(val); setSearch(""); }} style={{
             padding: "12px 20px", borderRadius: 12,
             border: filter === val ? "2px solid #16a34a" : "2px solid rgba(34,197,94,0.2)",
             background: filter === val ? "linear-gradient(135deg, #dcfce7, #bbf7d0)" : "rgba(255,255,255,0.8)",
@@ -350,6 +372,23 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
             fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all 0.2s ease",
           }}>{label}</button>
         ))}
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search vendor, notes…"
+          style={{
+            marginLeft: "auto",
+            background: "rgba(255,255,255,0.95)",
+            border: "1px solid rgba(34,197,94,0.2)",
+            borderRadius: 14,
+            padding: "10px 16px",
+            color: "#134e4a",
+            fontSize: 14,
+            minWidth: 200,
+            outline: "none",
+          }}
+        />
       </div>
 
       {/* ── Invoice list ───────────────────────────────────────────────────── */}

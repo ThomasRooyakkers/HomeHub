@@ -9,6 +9,8 @@ import Maintenance from "./components/Maintenance";
 import CalendarView from "./components/CalendarView";
 import PlantManager from "./components/PlantManager";
 import Weather from "./components/Weather";
+import LightsManager from "./components/LightsManager";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 const HOME_TOOLS = [
@@ -19,6 +21,7 @@ const HOME_TOOLS = [
   { id: "calendar",    name: "Calendar",          shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
   { id: "weather",     name: "Weather",           shortName: "Weather",   icon: "☁️", description: "Current conditions and hourly forecast for Houthalen-Helchteren.", active: true },
   { id: "plants",      name: "Plant Manager",     shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true },
+  { id: "lights",      name: "Lights",            shortName: "Lights",    icon: "💡", description: "Control Philips Hue lights and rooms.",                              active: true },
 ];
 
 const SAMPLE_INVOICES = [
@@ -73,51 +76,16 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("calendarEvents",    JSON.stringify(calendarEvents));   } catch {} }, [calendarEvents]);
   useEffect(() => { try { localStorage.setItem("plants",            JSON.stringify(plants));           } catch {} }, [plants]);
 
-  const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast?latitude=51.05&longitude=5.45&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=Europe%2FBrussels";
-
   const loadWeather = useCallback(async () => {
     setWeatherError(null);
-    let data = null;
-
-    if (apiEnabled) {
-      data = await apiFetch("/api/weather");
-    }
-
-    if (!data) {
-      try {
-        const response = await fetch(OPEN_METEO_URL);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const payload = await response.json();
-        const now = new Date();
-        const hourly = (payload.hourly?.time || []).map((time, index) => ({
-          time,
-          temperature: payload.hourly.temperature_2m?.[index],
-          precipitationProbability: payload.hourly.precipitation_probability?.[index],
-          weathercode: payload.hourly.weathercode?.[index],
-          windspeed: payload.hourly.windspeed_10m?.[index],
-        })).filter(item => new Date(item.time) >= now).slice(0, 24);
-
-        data = {
-          location: "Houthalen-Helchteren, BE",
-          current: {
-            temperature: payload.current_weather?.temperature,
-            windspeed: payload.current_weather?.windspeed,
-            weathercode: payload.current_weather?.weathercode,
-            time: payload.current_weather?.time,
-          },
-          hourly,
-          updatedAt: new Date().toISOString(),
-        };
-      } catch (error) {
-        setWeatherError("Unable to load weather data.");
-      }
-    }
-
-    if (data) {
+    try {
+      const data = await apiFetch("/api/weather");
       setWeatherData(data.current || null);
       setWeatherHourly(data.hourly || []);
+    } catch {
+      setWeatherError("Unable to load weather data.");
     }
-  }, [apiEnabled]);
+  }, []);
 
   const refreshWeather = async () => {
     await loadWeather();
@@ -133,11 +101,15 @@ export default function App() {
   // Load from backend once on mount
   useEffect(() => {
     const loadData = async () => {
-      const ping = await apiFetch("/api/ping");
-      if (!ping?.ok) return;
+      try {
+        const ping = await apiFetch("/api/ping");
+        if (!ping?.ok) return;
+      } catch {
+        return;
+      }
       setApiEnabled(true);
 
-      const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData] = await Promise.all([
+      const results = await Promise.allSettled([
         apiFetch("/api/invoices"),
         apiFetch("/api/recipes"),
         apiFetch("/api/meal-plan"),
@@ -145,6 +117,9 @@ export default function App() {
         apiFetch("/api/calendar"),
         apiFetch("/api/plants"),
       ]);
+
+      const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData] =
+        results.map(r => r.status === "fulfilled" ? r.value : null);
 
       if (invoiceData) setInvoices(invoiceData);
       if (recipeData) setRecipes(recipeData);
@@ -168,26 +143,34 @@ export default function App() {
     let updated = [...calEventsRef.current];
     let changed = false;
     for (const cal of urlProviders) {
-      const data = await apiFetch("/api/calendar-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: cal.source, provider: cal.provider }),
-      });
-      if (data?.events?.length) {
-        updated = [
-          ...updated.filter(e => e.calendarId !== cal.id),
-          ...data.events.map(ev => ({ ...ev, calendarId: cal.id })),
-        ];
-        changed = true;
+      try {
+        const data = await apiFetch("/api/calendar-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: cal.source, provider: cal.provider }),
+        });
+        if (data?.events?.length) {
+          updated = [
+            ...updated.filter(e => e.calendarId !== cal.id),
+            ...data.events.map(ev => ({ ...ev, calendarId: cal.id })),
+          ];
+          changed = true;
+        }
+      } catch (err) {
+        console.warn("Calendar refresh failed for", cal.provider, err.message);
       }
     }
     if (changed) {
       setCalEvents(updated);
-      apiFetch("/api/calendar", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providers: calProvidersRef.current, events: updated }),
-      });
+      try {
+        await apiFetch("/api/calendar", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ providers: calProvidersRef.current, events: updated }),
+        });
+      } catch (err) {
+        console.warn("Failed to persist refreshed calendar events:", err.message);
+      }
     }
   };
 
@@ -208,10 +191,17 @@ export default function App() {
     if (!invoice) return;
     const updated = { ...invoice, status: invoice.status === "paid" ? "unpaid" : "paid" };
     if (apiEnabled) {
-      const result = await apiFetch(`/api/invoices/${id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
-      });
-      if (result) { setInvoices(prev => prev.map(i => i.id === id ? result : i)); showToast("Status updated"); return; }
+      try {
+        const result = await apiFetch(`/api/invoices/${id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+        });
+        setInvoices(prev => prev.map(i => i.id === id ? result : i));
+        showToast("Status updated");
+        return;
+      } catch (err) {
+        showToast(err.message || "Update failed", "danger");
+        return;
+      }
     }
     setInvoices(prev => prev.map(i => i.id === id ? updated : i));
     showToast("Status updated");
@@ -222,10 +212,17 @@ export default function App() {
     if (!task) return;
     const updated = { ...task, completed: !task.completed };
     if (apiEnabled) {
-      const result = await apiFetch(`/api/maintenance/${id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
-      });
-      if (result) { setMaintenance(prev => prev.map(t => t.id === id ? result : t)); showToast("Task updated"); return; }
+      try {
+        const result = await apiFetch(`/api/maintenance/${id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+        });
+        setMaintenance(prev => prev.map(t => t.id === id ? result : t));
+        showToast("Task updated");
+        return;
+      } catch (err) {
+        showToast(err.message || "Update failed", "danger");
+        return;
+      }
     }
     setMaintenance(prev => prev.map(t => t.id === id ? updated : t));
     showToast("Task updated");
@@ -238,37 +235,56 @@ export default function App() {
         <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} />
         <main className="app-main">
           {activeTool === "dashboard" && (
-            <Dashboard
-              invoices={invoices} mealPlan={mealPlan} recipes={recipes}
-              maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
-              weatherData={weatherData} weatherHourly={weatherHourly}
-              onNavigate={setActiveTool}
-              onToggleInvoicePaid={toggleInvoicePaid}
-              onToggleMaintenanceDone={toggleMaintenanceDone}
-            />
+            <ErrorBoundary key="dashboard">
+              <Dashboard
+                invoices={invoices} mealPlan={mealPlan} recipes={recipes}
+                maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
+                weatherData={weatherData} weatherHourly={weatherHourly}
+                onNavigate={setActiveTool}
+                onToggleInvoicePaid={toggleInvoicePaid}
+                onToggleMaintenanceDone={toggleMaintenanceDone}
+              />
+            </ErrorBoundary>
           )}
           {activeTool === "invoices" && (
-            <InvoiceTracker invoices={invoices} setInvoices={setInvoices} apiEnabled={apiEnabled} showToast={showToast} />
+            <ErrorBoundary key="invoices">
+              <InvoiceTracker invoices={invoices} setInvoices={setInvoices} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
           )}
           {activeTool === "meal" && (
-            <MealPlanner recipes={recipes} setRecipes={setRecipes} mealPlan={mealPlan} setMealPlan={setMealPlan} apiEnabled={apiEnabled} showToast={showToast} />
+            <ErrorBoundary key="meal">
+              <MealPlanner recipes={recipes} setRecipes={setRecipes} mealPlan={mealPlan} setMealPlan={setMealPlan} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
           )}
           {activeTool === "maintenance" && (
-            <Maintenance maintenanceTasks={maintenanceTasks} setMaintenanceTasks={setMaintenance} apiEnabled={apiEnabled} showToast={showToast} />
+            <ErrorBoundary key="maintenance">
+              <Maintenance maintenanceTasks={maintenanceTasks} setMaintenanceTasks={setMaintenance} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
           )}
           {activeTool === "calendar" && (
-            <CalendarView
-              calendarProviders={calendarProviders} setCalendarProviders={setCalProviders}
-              calendarEvents={calendarEvents} setCalendarEvents={setCalEvents}
-              apiEnabled={apiEnabled} showToast={showToast}
-              onRefresh={refreshCalendars}
-            />
+            <ErrorBoundary key="calendar">
+              <CalendarView
+                calendarProviders={calendarProviders} setCalendarProviders={setCalProviders}
+                calendarEvents={calendarEvents} setCalendarEvents={setCalEvents}
+                apiEnabled={apiEnabled} showToast={showToast}
+                onRefresh={refreshCalendars}
+              />
+            </ErrorBoundary>
           )}
           {activeTool === "weather" && (
-            <Weather weatherData={weatherData} hourly={weatherHourly} onRefresh={refreshWeather} error={weatherError} />
+            <ErrorBoundary key="weather">
+              <Weather weatherData={weatherData} hourly={weatherHourly} onRefresh={refreshWeather} error={weatherError} />
+            </ErrorBoundary>
           )}
           {activeTool === "plants" && (
-            <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />
+            <ErrorBoundary key="plants">
+              <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
+          )}
+          {activeTool === "lights" && (
+            <ErrorBoundary key="lights">
+              <LightsManager apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
           )}
         </main>
       </div>

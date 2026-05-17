@@ -6,7 +6,7 @@ const path = require("path");
 const config = require("./config");
 const { diskUpload, memUpload, sanitizeFilename } = require("./middleware/upload");
 const errorHandler = require("./middleware/error");
-const { validateInvoice } = require("./middleware/validate");
+const { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask } = require("./middleware/validate");
 const { extract } = require("./services/ocr");
 
 const {
@@ -17,7 +17,13 @@ const {
   MEALPLAN_FILE,
   MAINTENANCE_FILE,
   CALENDAR_FILE,
+  PLANTS_FILE,
   CORS_ORIGIN,
+  WEATHER_LAT,
+  WEATHER_LON,
+  WEATHER_LOCATION,
+  HUE_BRIDGE_IP,
+  HUE_API_KEY,
 } = config;
 
 const app = express();
@@ -51,6 +57,10 @@ const SAMPLE_MAINTENANCE = [
 
 const SAMPLE_MEAL_PLAN = {};
 const SAMPLE_CALENDAR = { providers: [], events: [] };
+
+const SAMPLE_PLANTS = [
+  { id: 1, name: "Basil", wateringFrequency: "weekly", lastWatered: "", feedingFrequency: "monthly", lastFed: "", notes: "Keep in sunny window, pinch leaves regularly.", imageId: "snake-plant" },
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -169,7 +179,7 @@ app.get("/api/ping", (_, res) => res.json({ ok: true }));
 // ── Weather ───────────────────────────────────────────────────────────────────
 
 app.get("/api/weather", async (_, res, next) => {
-  const url = "https://api.open-meteo.com/v1/forecast?latitude=51.05&longitude=5.45&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=Europe%2FBrussels";
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=auto`;
   try {
     const payload = await fetchJson(url);
     const now = new Date();
@@ -182,7 +192,7 @@ app.get("/api/weather", async (_, res, next) => {
     })).filter(item => new Date(item.time) >= now).slice(0, 24);
 
     res.json({
-      location: "Houthalen-Helchteren, BE",
+      location: WEATHER_LOCATION,
       current: {
         temperature: payload.current_weather?.temperature,
         windspeed: payload.current_weather?.windspeed,
@@ -277,6 +287,7 @@ app.post("/api/recipes", diskUpload.single("image"), (req, res, next) => {
   try {
     const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
     const { id: _id, ...payload } = parsePayload(req);
+    validateRecipe(payload);
     const recipe = {
       ...payload,
       id: nextId(recipes),
@@ -297,6 +308,7 @@ app.put("/api/recipes/:id", diskUpload.single("image"), (req, res, next) => {
     const idx = recipes.findIndex(item => item.id === id);
     if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Recipe not found" } });
     const { id: _id, ...payload } = parsePayload(req);
+    validateRecipe(payload);
     recipes[idx] = {
       ...recipes[idx],
       ...payload,
@@ -342,6 +354,7 @@ app.post("/api/maintenance", diskUpload.single("photo"), (req, res, next) => {
   try {
     const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
     const { id: _id, ...payload } = parsePayload(req);
+    validateMaintenanceTask(payload);
     const task = {
       ...payload,
       id: nextId(maintenance),
@@ -362,6 +375,7 @@ app.put("/api/maintenance/:id", diskUpload.single("photo"), (req, res, next) => 
     const idx = maintenance.findIndex(item => item.id === id);
     if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Task not found" } });
     const { id: _id, ...payload } = parsePayload(req);
+    validateMaintenanceTask(payload);
     maintenance[idx] = {
       ...maintenance[idx],
       ...payload,
@@ -383,6 +397,44 @@ app.delete("/api/maintenance/:id", (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ── Plants ────────────────────────────────────────────────────────────────────
+
+app.get("/api/plants", (_, res) => res.json(safeLoad(PLANTS_FILE, SAMPLE_PLANTS)));
+
+app.post("/api/plants", (req, res, next) => {
+  try {
+    const plants = safeLoad(PLANTS_FILE, SAMPLE_PLANTS);
+    const { id: _id, ...payload } = parsePayload(req);
+    validatePlant(payload);
+    const plant = { ...payload, id: nextId(plants) };
+    plants.push(plant);
+    saveFile(PLANTS_FILE, plants);
+    res.json(plant);
+  } catch (err) { next(err); }
+});
+
+app.put("/api/plants/:id", (req, res, next) => {
+  try {
+    const plants = safeLoad(PLANTS_FILE, SAMPLE_PLANTS);
+    const id = parseInt(req.params.id, 10);
+    const idx = plants.findIndex(item => item.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Plant not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    validatePlant(payload);
+    plants[idx] = { ...plants[idx], ...payload, id };
+    saveFile(PLANTS_FILE, plants);
+    res.json(plants[idx]);
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/plants/:id", (req, res, next) => {
+  try {
+    const plants = safeLoad(PLANTS_FILE, SAMPLE_PLANTS);
+    saveFile(PLANTS_FILE, plants.filter(item => item.id !== parseInt(req.params.id, 10)));
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
@@ -463,6 +515,71 @@ app.post("/api/calendar-import", async (req, res, next) => {
       ? "Calendar request timed out after 10 seconds"
       : (error.message || "Failed to import calendar");
     next(Object.assign(new Error(msg), { status: 500 }));
+  }
+});
+
+// ── Philips Hue ───────────────────────────────────────────────────────────────
+
+const hue = require("./services/hue");
+
+const requireHue = (req, res, next) => {
+  if (!HUE_BRIDGE_IP || !HUE_API_KEY) {
+    return res.status(503).json({ error: { code: 503, message: "Hue not configured. Set HUE_BRIDGE_IP and HUE_API_KEY." } });
+  }
+  next();
+};
+
+app.get("/api/hue/lights", requireHue, async (req, res, next) => {
+  try {
+    const lights = await hue.getLights(HUE_BRIDGE_IP, HUE_API_KEY);
+    res.json(lights);
+  } catch (err) {
+    next(Object.assign(err, { status: 502 }));
+  }
+});
+
+app.get("/api/hue/groups", requireHue, async (req, res, next) => {
+  try {
+    const groups = await hue.getGroups(HUE_BRIDGE_IP, HUE_API_KEY);
+    res.json(groups);
+  } catch (err) {
+    next(Object.assign(err, { status: 502 }));
+  }
+});
+
+app.put("/api/hue/lights/:id/state", requireHue, async (req, res, next) => {
+  try {
+    const result = await hue.setLightState(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, req.body);
+    res.json(result);
+  } catch (err) {
+    next(Object.assign(err, { status: 502 }));
+  }
+});
+
+app.put("/api/hue/groups/:id/action", requireHue, async (req, res, next) => {
+  try {
+    const result = await hue.setGroupAction(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, req.body);
+    res.json(result);
+  } catch (err) {
+    next(Object.assign(err, { status: 502 }));
+  }
+});
+
+app.get("/api/hue/scenes", requireHue, async (req, res, next) => {
+  try {
+    const scenes = await hue.getScenes(HUE_BRIDGE_IP, HUE_API_KEY);
+    res.json(scenes);
+  } catch (err) {
+    next(Object.assign(err, { status: 502 }));
+  }
+});
+
+app.put("/api/hue/groups/:id/scene", requireHue, async (req, res, next) => {
+  try {
+    const result = await hue.activateScene(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, req.body.scene);
+    res.json(result);
+  } catch (err) {
+    next(Object.assign(err, { status: 502 }));
   }
 });
 
