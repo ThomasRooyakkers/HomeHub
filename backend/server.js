@@ -1,35 +1,43 @@
 const express = require("express");
+const cors = require("cors");
 const https = require("https");
-const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const config = require("./config");
+const { diskUpload, memUpload, sanitizeFilename } = require("./middleware/upload");
+const errorHandler = require("./middleware/error");
+const { validateInvoice } = require("./middleware/validate");
+const { extract } = require("./services/ocr");
+
+const {
+  PORT,
+  UPLOADS_DIR,
+  INVOICES_FILE,
+  RECIPES_FILE,
+  MEALPLAN_FILE,
+  MAINTENANCE_FILE,
+  CALENDAR_FILE,
+  CORS_ORIGIN,
+} = config;
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-const DATA_DIR = "/data";
-const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
-const INVOICES_FILE = path.join(DATA_DIR, "invoices.json");
-const RECIPES_FILE = path.join(DATA_DIR, "recipes.json");
-const MEALPLAN_FILE = path.join(DATA_DIR, "mealPlan.json");
-const MAINTENANCE_FILE = path.join(DATA_DIR, "maintenance.json");
-const CALENDAR_FILE = path.join(DATA_DIR, "calendar.json");
 
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: UPLOADS_DIR,
-  filename: (_, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+if (CORS_ORIGIN) {
+  app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
+}
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 app.use("/uploads", express.static(UPLOADS_DIR));
 
+// ── Sample data ───────────────────────────────────────────────────────────────
+
 const SAMPLE_INVOICES = [
-  { id: 1, vendor: "Engie", amount: 187.5, dueDate: "2026-04-15", invoiceNo: "ENG-2026-0041", notes: "Gas & electricity", status: "overdue", file: null },
-  { id: 2, vendor: "Proximus", amount: 49.99, dueDate: "2026-05-20", invoiceNo: "PRX-88210", notes: "Internet & TV", status: "unpaid", file: null },
-  { id: 3, vendor: "Water-link", amount: 62.0, dueDate: "2026-04-30", invoiceNo: "WL-2026-112", notes: "Water Q1", status: "paid", file: null },
+  { id: 1, vendor: "Engie", amount: 187.5, dueDate: "2026-04-15", invoiceNo: "ENG-2026-0041", notes: "Gas & electricity", category: "Utilities", status: "overdue", file: null },
+  { id: 2, vendor: "Proximus", amount: 49.99, dueDate: "2026-05-20", invoiceNo: "PRX-88210", notes: "Internet & TV", category: "Internet", status: "unpaid", file: null },
+  { id: 3, vendor: "Water-link", amount: 62.0, dueDate: "2026-04-30", invoiceNo: "WL-2026-112", notes: "Water Q1", category: "Utilities", status: "paid", file: null },
 ];
 
 const SAMPLE_RECIPES = [
@@ -44,6 +52,8 @@ const SAMPLE_MAINTENANCE = [
 const SAMPLE_MEAL_PLAN = {};
 const SAMPLE_CALENDAR = { providers: [], events: [] };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const safeLoad = (filePath, fallback) => {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -54,12 +64,7 @@ const safeLoad = (filePath, fallback) => {
 };
 
 const saveFile = (filePath, data) => {
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-  } catch (err) {
-    console.error(`Failed to save ${filePath}:`, err.message);
-    throw err;
-  }
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 };
 
 const parsePayload = (req) => {
@@ -85,7 +90,8 @@ const generateInvoiceNo = (invoices) => {
   return `INV-${year}-${String(next).padStart(4, "0")}`;
 };
 
-// RFC 5545: unfold continuation lines before parsing
+// ── ICS / calendar helpers ────────────────────────────────────────────────────
+
 const unfoldICS = (content) => content.replace(/\r?\n[ \t]/g, "");
 
 const parseICSTime = (value) => {
@@ -147,7 +153,22 @@ const fetchJson = (url) => new Promise((resolve, reject) => {
   }).on("error", reject);
 });
 
-app.get("/api/weather", async (_, res) => {
+// ── Health & utility ──────────────────────────────────────────────────────────
+
+app.get("/api/health", (_, res) => {
+  let db = true;
+  let uploads = true;
+  try { fs.accessSync(path.dirname(INVOICES_FILE), fs.constants.W_OK); } catch { db = false; }
+  try { fs.accessSync(UPLOADS_DIR, fs.constants.W_OK); } catch { uploads = false; }
+  const status = db && uploads ? "ok" : "degraded";
+  res.status(status === "ok" ? 200 : 503).json({ status, db, uploads });
+});
+
+app.get("/api/ping", (_, res) => res.json({ ok: true }));
+
+// ── Weather ───────────────────────────────────────────────────────────────────
+
+app.get("/api/weather", async (_, res, next) => {
   const url = "https://api.open-meteo.com/v1/forecast?latitude=51.05&longitude=5.45&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=Europe%2FBrussels";
   try {
     const payload = await fetchJson(url);
@@ -172,170 +193,231 @@ app.get("/api/weather", async (_, res) => {
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Weather proxy failed:", error.message);
-    res.status(502).json({ error: "Unable to fetch weather" });
+    next(Object.assign(error, { status: 502 }));
   }
 });
 
-app.get("/api/ping", (_, res) => res.json({ ok: true }));
+// ── OCR (4.3) ─────────────────────────────────────────────────────────────────
+
+app.post("/api/ocr", memUpload.single("file"), async (req, res, next) => {
+  if (!req.file) {
+    return res.status(400).json({ error: { code: 400, message: "No file provided" } });
+  }
+  try {
+    const { tokens } = await extract(req.file.buffer, req.file.mimetype);
+    res.json({ tokens });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── Invoices ──────────────────────────────────────────────────────────────────
 
 app.get("/api/invoices", (_, res) => res.json(safeLoad(INVOICES_FILE, SAMPLE_INVOICES)));
 
-app.post("/api/invoices", upload.single("file"), (req, res) => {
-  const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
-  const { id: _id, ...payload } = parsePayload(req);
-  const invoice = {
-    ...payload,
-    id: nextId(invoices),
-    invoiceNo: payload.invoiceNo || generateInvoiceNo(invoices),
-    file: req.file
-      ? { name: req.file.originalname, path: `/uploads/${req.file.filename}` }
-      : payload.file || null,
-  };
-  invoices.push(invoice);
-  saveFile(INVOICES_FILE, invoices);
-  res.json(invoice);
+app.post("/api/invoices", diskUpload.single("file"), (req, res, next) => {
+  try {
+    const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
+    const { id: _id, ...payload } = parsePayload(req);
+    validateInvoice(payload);
+    const invoice = {
+      ...payload,
+      id: nextId(invoices),
+      invoiceNo: payload.invoiceNo || generateInvoiceNo(invoices),
+      file: req.file
+        ? { name: sanitizeFilename(req.file.originalname), path: `/uploads/${req.file.filename}` }
+        : payload.file || null,
+    };
+    invoices.push(invoice);
+    saveFile(INVOICES_FILE, invoices);
+    res.json(invoice);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.put("/api/invoices/:id", upload.single("file"), (req, res) => {
-  const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
-  const id = parseInt(req.params.id, 10);
-  const idx = invoices.findIndex(item => item.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  const { id: _id, ...payload } = parsePayload(req);
-  invoices[idx] = {
-    ...invoices[idx],
-    ...payload,
-    id,
-    file: req.file
-      ? { name: req.file.originalname, path: `/uploads/${req.file.filename}` }
-      : payload.file ?? invoices[idx].file ?? null,
-  };
-  saveFile(INVOICES_FILE, invoices);
-  res.json(invoices[idx]);
+app.put("/api/invoices/:id", diskUpload.single("file"), (req, res, next) => {
+  try {
+    const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
+    const id = parseInt(req.params.id, 10);
+    const idx = invoices.findIndex(item => item.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Invoice not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    validateInvoice(payload);
+    invoices[idx] = {
+      ...invoices[idx],
+      ...payload,
+      id,
+      file: req.file
+        ? { name: sanitizeFilename(req.file.originalname), path: `/uploads/${req.file.filename}` }
+        : payload.file ?? invoices[idx].file ?? null,
+    };
+    saveFile(INVOICES_FILE, invoices);
+    res.json(invoices[idx]);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.delete("/api/invoices/:id", (req, res) => {
-  const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
-  saveFile(INVOICES_FILE, invoices.filter(item => item.id !== parseInt(req.params.id, 10)));
-  res.json({ ok: true });
+app.delete("/api/invoices/:id", (req, res, next) => {
+  try {
+    const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
+    saveFile(INVOICES_FILE, invoices.filter(item => item.id !== parseInt(req.params.id, 10)));
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── Recipes ───────────────────────────────────────────────────────────────────
 
 app.get("/api/recipes", (_, res) => res.json(safeLoad(RECIPES_FILE, SAMPLE_RECIPES)));
 
-app.post("/api/recipes", upload.single("image"), (req, res) => {
-  const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
-  const { id: _id, ...payload } = parsePayload(req);
-  const recipe = {
-    ...payload,
-    id: nextId(recipes),
-    image: req.file ? `/uploads/${req.file.filename}` : payload.image || null,
-  };
-  recipes.push(recipe);
-  saveFile(RECIPES_FILE, recipes);
-  res.json(recipe);
+app.post("/api/recipes", diskUpload.single("image"), (req, res, next) => {
+  try {
+    const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
+    const { id: _id, ...payload } = parsePayload(req);
+    const recipe = {
+      ...payload,
+      id: nextId(recipes),
+      image: req.file ? `/uploads/${req.file.filename}` : payload.image || null,
+    };
+    recipes.push(recipe);
+    saveFile(RECIPES_FILE, recipes);
+    res.json(recipe);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.put("/api/recipes/:id", upload.single("image"), (req, res) => {
-  const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
-  const id = parseInt(req.params.id, 10);
-  const idx = recipes.findIndex(item => item.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  const { id: _id, ...payload } = parsePayload(req);
-  recipes[idx] = {
-    ...recipes[idx],
-    ...payload,
-    id,
-    image: req.file ? `/uploads/${req.file.filename}` : payload.image ?? recipes[idx].image ?? null,
-  };
-  saveFile(RECIPES_FILE, recipes);
-  res.json(recipes[idx]);
+app.put("/api/recipes/:id", diskUpload.single("image"), (req, res, next) => {
+  try {
+    const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
+    const id = parseInt(req.params.id, 10);
+    const idx = recipes.findIndex(item => item.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Recipe not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    recipes[idx] = {
+      ...recipes[idx],
+      ...payload,
+      id,
+      image: req.file ? `/uploads/${req.file.filename}` : payload.image ?? recipes[idx].image ?? null,
+    };
+    saveFile(RECIPES_FILE, recipes);
+    res.json(recipes[idx]);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.delete("/api/recipes/:id", (req, res) => {
-  const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
-  saveFile(RECIPES_FILE, recipes.filter(item => item.id !== parseInt(req.params.id, 10)));
-  res.json({ ok: true });
+app.delete("/api/recipes/:id", (req, res, next) => {
+  try {
+    const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
+    saveFile(RECIPES_FILE, recipes.filter(item => item.id !== parseInt(req.params.id, 10)));
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── Meal plan ─────────────────────────────────────────────────────────────────
 
 app.get("/api/meal-plan", (_, res) => res.json(safeLoad(MEALPLAN_FILE, SAMPLE_MEAL_PLAN)));
 
-app.put("/api/meal-plan", (req, res) => {
-  const payload = parsePayload(req);
-  saveFile(MEALPLAN_FILE, payload || {});
-  res.json(payload || {});
+app.put("/api/meal-plan", (req, res, next) => {
+  try {
+    const payload = parsePayload(req);
+    saveFile(MEALPLAN_FILE, payload || {});
+    res.json(payload || {});
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── Maintenance ───────────────────────────────────────────────────────────────
 
 app.get("/api/maintenance", (_, res) => res.json(safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE)));
 
-app.post("/api/maintenance", upload.single("photo"), (req, res) => {
-  const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
-  const { id: _id, ...payload } = parsePayload(req);
-  const task = {
-    ...payload,
-    id: nextId(maintenance),
-    photo: req.file ? `/uploads/${req.file.filename}` : payload.photo || null,
-  };
-  maintenance.push(task);
-  saveFile(MAINTENANCE_FILE, maintenance);
-  res.json(task);
+app.post("/api/maintenance", diskUpload.single("photo"), (req, res, next) => {
+  try {
+    const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
+    const { id: _id, ...payload } = parsePayload(req);
+    const task = {
+      ...payload,
+      id: nextId(maintenance),
+      photo: req.file ? `/uploads/${req.file.filename}` : payload.photo || null,
+    };
+    maintenance.push(task);
+    saveFile(MAINTENANCE_FILE, maintenance);
+    res.json(task);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.put("/api/maintenance/:id", upload.single("photo"), (req, res) => {
-  const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
-  const id = parseInt(req.params.id, 10);
-  const idx = maintenance.findIndex(item => item.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  const { id: _id, ...payload } = parsePayload(req);
-  maintenance[idx] = {
-    ...maintenance[idx],
-    ...payload,
-    id,
-    photo: req.file ? `/uploads/${req.file.filename}` : payload.photo ?? maintenance[idx].photo ?? null,
-  };
-  saveFile(MAINTENANCE_FILE, maintenance);
-  res.json(maintenance[idx]);
+app.put("/api/maintenance/:id", diskUpload.single("photo"), (req, res, next) => {
+  try {
+    const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
+    const id = parseInt(req.params.id, 10);
+    const idx = maintenance.findIndex(item => item.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Task not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    maintenance[idx] = {
+      ...maintenance[idx],
+      ...payload,
+      id,
+      photo: req.file ? `/uploads/${req.file.filename}` : payload.photo ?? maintenance[idx].photo ?? null,
+    };
+    saveFile(MAINTENANCE_FILE, maintenance);
+    res.json(maintenance[idx]);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.delete("/api/maintenance/:id", (req, res) => {
-  const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
-  saveFile(MAINTENANCE_FILE, maintenance.filter(item => item.id !== parseInt(req.params.id, 10)));
-  res.json({ ok: true });
+app.delete("/api/maintenance/:id", (req, res, next) => {
+  try {
+    const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
+    saveFile(MAINTENANCE_FILE, maintenance.filter(item => item.id !== parseInt(req.params.id, 10)));
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
 
 app.get("/api/calendar", (_, res) => res.json(safeLoad(CALENDAR_FILE, SAMPLE_CALENDAR)));
 
-app.put("/api/calendar", (req, res) => {
-  const payload = parsePayload(req);
-  const data = { providers: payload.providers || [], events: payload.events || [] };
-  saveFile(CALENDAR_FILE, data);
-  res.json(data);
+app.put("/api/calendar", (req, res, next) => {
+  try {
+    const payload = parsePayload(req);
+    const data = { providers: payload.providers || [], events: payload.events || [] };
+    saveFile(CALENDAR_FILE, data);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.delete("/api/calendar/providers/:id", (req, res) => {
-  const calId = parseInt(req.params.id, 10);
-  const calendar = safeLoad(CALENDAR_FILE, SAMPLE_CALENDAR);
-  const data = {
-    providers: calendar.providers.filter(p => p.id !== calId),
-    events: calendar.events.filter(e => e.calendarId !== calId),
-  };
-  saveFile(CALENDAR_FILE, data);
-  res.json(data);
+app.delete("/api/calendar/providers/:id", (req, res, next) => {
+  try {
+    const calId = parseInt(req.params.id, 10);
+    const calendar = safeLoad(CALENDAR_FILE, SAMPLE_CALENDAR);
+    const data = {
+      providers: calendar.providers.filter(p => p.id !== calId),
+      events: calendar.events.filter(e => e.calendarId !== calId),
+    };
+    saveFile(CALENDAR_FILE, data);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.post("/api/calendar-import", async (req, res) => {
+app.post("/api/calendar-import", async (req, res, next) => {
   const { url, provider } = req.body;
-  if (!url) return res.status(400).json({ error: "URL required" });
+  if (!url) return res.status(400).json({ error: { code: 400, message: "URL required" } });
 
   let fetchUrl = url;
   if (url.startsWith("webcal://")) fetchUrl = url.replace("webcal://", "https://");
@@ -355,35 +437,37 @@ app.post("/api/calendar-import", async (req, res) => {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: `Calendar server returned HTTP ${response.status}. Check the URL is correct and the calendar is publicly shared.` });
+      return res.status(response.status).json({ error: { code: response.status, message: `Calendar server returned HTTP ${response.status}.` } });
     }
 
     const content = await response.text();
 
-    // Detect HTML response (auth page, error page, redirect) instead of ICS
     if (content.trimStart().startsWith("<")) {
-      return res.status(400).json({ error: "The URL returned an HTML page instead of calendar data. Make sure the calendar is set to public sharing and use the ICS/webcal export link, not a web page URL." });
+      return res.status(400).json({ error: { code: 400, message: "The URL returned an HTML page instead of calendar data. Make sure the calendar is set to public sharing and use the ICS/webcal export link." } });
     }
 
     if (!content.includes("BEGIN:VCALENDAR")) {
-      return res.status(400).json({ error: "The response does not appear to be a valid ICS calendar file." });
+      return res.status(400).json({ error: { code: 400, message: "The response does not appear to be a valid ICS calendar file." } });
     }
 
     const events = parseICS(content, provider || "Calendar");
 
     if (!events.length) {
-      return res.status(400).json({ error: "The calendar was imported successfully but contains no events. It may be empty or all events may be in the past." });
+      return res.status(400).json({ error: { code: 400, message: "The calendar was imported successfully but contains no events." } });
     }
 
     res.json({ events, count: events.length });
   } catch (error) {
     clearTimeout(timeout);
-    console.error("Calendar import error:", error.message);
     const msg = error.name === "AbortError"
       ? "Calendar request timed out after 10 seconds"
       : (error.message || "Failed to import calendar");
-    res.status(500).json({ error: msg });
+    next(Object.assign(new Error(msg), { status: 500 }));
   }
 });
+
+// ── Centralized error handler (must be last) ──────────────────────────────────
+
+app.use(errorHandler);
 
 app.listen(PORT, "0.0.0.0", () => console.log(`Backend running on :${PORT}`));

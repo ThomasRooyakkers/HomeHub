@@ -13,7 +13,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 COPY --from=backend-build /app/backend/node_modules ./node_modules
-COPY backend/server.js .
+COPY backend/ .
 COPY --from=frontend-build /app/frontend/build ./public
 RUN apk add --no-cache nginx && mkdir -p /data/uploads
 COPY nginx.conf /etc/nginx/nginx.conf

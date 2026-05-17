@@ -1,13 +1,25 @@
-version: "3.9"
 services:
-  invoice-tracker:
+  homehub:
     build: .
-    container_name: invoice-tracker
+    container_name: homehub
     restart: unless-stopped
     ports:
       - "5080:80"
+    env_file:
+      - .env
     volumes:
-      - invoice_data:/data
+      - homehub_data:/data
+    networks:
+      - homehub
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
-  invoice_data:
+  homehub_data:
+
+networks:
+  homehub:
