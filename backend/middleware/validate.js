@@ -12,4 +12,23 @@ const validateInvoice = (body) => {
   }
 };
 
-module.exports = { validateInvoice };
+const VALID_FREQUENCIES = ["daily", "weekly", "biweekly", "monthly", "quarterly"];
+
+const validatePlant = (body) => {
+  if (!body.name || !String(body.name).trim()) throw bad("name is required");
+  if (body.wateringFrequency && !VALID_FREQUENCIES.includes(body.wateringFrequency))
+    throw bad(`wateringFrequency must be one of: ${VALID_FREQUENCIES.join(", ")}`);
+  if (body.feedingFrequency && !VALID_FREQUENCIES.includes(body.feedingFrequency))
+    throw bad(`feedingFrequency must be one of: ${VALID_FREQUENCIES.join(", ")}`);
+};
+
+const validateRecipe = (body) => {
+  if (!body.name || !String(body.name).trim()) throw bad("name is required");
+};
+
+const validateMaintenanceTask = (body) => {
+  if (!body.title || !String(body.title).trim()) throw bad("title is required");
+  if (body.nextDue && !ISO_DATE.test(body.nextDue)) throw bad("nextDue must be in YYYY-MM-DD format");
+};
+
+module.exports = { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask };

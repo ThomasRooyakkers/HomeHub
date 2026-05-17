@@ -32,22 +32,25 @@ export default function Maintenance({ maintenanceTasks, setMaintenanceTasks, api
     const { _photoFile, ...payload } = taskForm;
 
     if (apiEnabled) {
-      const method = taskForm.id ? "PUT" : "POST";
-      const endpoint = taskForm.id ? `/api/maintenance/${taskForm.id}` : "/api/maintenance";
-      let body, headers;
-      if (_photoFile) {
-        body = new FormData();
-        body.append("data", JSON.stringify({ ...payload, photo: null }));
-        body.append("photo", _photoFile);
-      } else {
-        body = JSON.stringify(payload);
-        headers = { "Content-Type": "application/json" };
-      }
-      const result = await apiFetch(endpoint, { method, body, headers });
-      if (result) {
+      try {
+        const method = taskForm.id ? "PUT" : "POST";
+        const endpoint = taskForm.id ? `/api/maintenance/${taskForm.id}` : "/api/maintenance";
+        let body, headers;
+        if (_photoFile) {
+          body = new FormData();
+          body.append("data", JSON.stringify({ ...payload, photo: null }));
+          body.append("photo", _photoFile);
+        } else {
+          body = JSON.stringify(payload);
+          headers = { "Content-Type": "application/json" };
+        }
+        const result = await apiFetch(endpoint, { method, body, headers });
         setMaintenanceTasks(prev => taskForm.id ? prev.map(t => t.id === taskForm.id ? result : t) : [...prev, result]);
         showToast(taskForm.id ? "Task updated" : "Task added");
         setTaskForm(null);
+        return;
+      } catch (err) {
+        showToast(err.message || "Request failed", "danger");
         return;
       }
     }
@@ -66,15 +69,30 @@ export default function Maintenance({ maintenanceTasks, setMaintenanceTasks, api
     if (!task) return;
     const updated = { ...task, completed: !task.completed };
     if (apiEnabled) {
-      const result = await apiFetch(`/api/maintenance/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated) });
-      if (result) { setMaintenanceTasks(prev => prev.map(t => t.id === id ? result : t)); showToast("Status updated"); return; }
+      try {
+        const result = await apiFetch(`/api/maintenance/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated) });
+        setMaintenanceTasks(prev => prev.map(t => t.id === id ? result : t));
+        showToast("Status updated");
+        return;
+      } catch (err) {
+        showToast(err.message || "Update failed", "danger");
+        return;
+      }
     }
     setMaintenanceTasks(prev => prev.map(t => t.id === id ? updated : t));
     showToast("Status updated");
   };
 
   const confirmDelete = async () => {
-    if (apiEnabled) await apiFetch(`/api/maintenance/${deleteTaskId}`, { method: "DELETE" });
+    if (apiEnabled) {
+      try {
+        await apiFetch(`/api/maintenance/${deleteTaskId}`, { method: "DELETE" });
+      } catch (err) {
+        showToast(err.message || "Delete failed", "danger");
+        setDeleteTaskId(null);
+        return;
+      }
+    }
     setMaintenanceTasks(prev => prev.filter(t => t.id !== deleteTaskId));
     setDeleteTaskId(null);
     showToast("Task removed", "danger");

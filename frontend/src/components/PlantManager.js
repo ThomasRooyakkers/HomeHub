@@ -40,17 +40,18 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
     const isNew = !editingPlant.id;
     const plantData = { ...editingPlant, id: editingPlant.id || Date.now() };
     if (apiEnabled) {
-      const method = isNew ? "POST" : "PUT";
-      const url = isNew ? "/api/plants" : `/api/plants/${plantData.id}`;
-      const result = await apiFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(plantData),
-      });
-      if (result) {
+      try {
+        const result = await apiFetch(isNew ? "/api/plants" : `/api/plants/${plantData.id}`, {
+          method: isNew ? "POST" : "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(plantData),
+        });
         setPlants(prev => isNew ? [...prev, result] : prev.map(p => p.id === plantData.id ? result : p));
         showToast(isNew ? "Plant added" : "Plant updated");
         setEditingPlant(null);
+        return;
+      } catch (err) {
+        showToast(err.message || "Request failed", "danger");
         return;
       }
     }
@@ -61,11 +62,14 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
 
   const handleDeletePlant = async () => {
     if (apiEnabled) {
-      const result = await apiFetch(`/api/plants/${deletingPlant}`, { method: "DELETE" });
-      if (result) {
+      try {
+        await apiFetch(`/api/plants/${deletingPlant}`, { method: "DELETE" });
         setPlants(prev => prev.filter(p => p.id !== deletingPlant));
         showToast("Plant deleted", "danger");
         setDeletingPlant(null);
+        return;
+      } catch (err) {
+        showToast(err.message || "Delete failed", "danger");
         return;
       }
     }
@@ -77,14 +81,17 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
   const markWatered = async (id) => {
     const updated = { ...plants.find(p => p.id === id), lastWatered: new Date().toISOString().slice(0, 10) };
     if (apiEnabled) {
-      const result = await apiFetch(`/api/plants/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated),
-      });
-      if (result) {
+      try {
+        const result = await apiFetch(`/api/plants/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated),
+        });
         setPlants(prev => prev.map(p => p.id === id ? result : p));
         showToast("Marked as watered");
+        return;
+      } catch (err) {
+        showToast(err.message || "Update failed", "danger");
         return;
       }
     }
@@ -95,14 +102,17 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
   const markFed = async (id) => {
     const updated = { ...plants.find(p => p.id === id), lastFed: new Date().toISOString().slice(0, 10) };
     if (apiEnabled) {
-      const result = await apiFetch(`/api/plants/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated),
-      });
-      if (result) {
+      try {
+        const result = await apiFetch(`/api/plants/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated),
+        });
         setPlants(prev => prev.map(p => p.id === id ? result : p));
         showToast("Marked as fed");
+        return;
+      } catch (err) {
+        showToast(err.message || "Update failed", "danger");
         return;
       }
     }
