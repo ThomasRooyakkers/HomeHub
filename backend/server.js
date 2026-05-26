@@ -3,8 +3,13 @@ const cors = require("cors");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const session = require("express-session");
+const FileStore = require("session-file-store")(session);
+const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
 const config = require("./config");
-const { diskUpload, memUpload, sanitizeFilename } = require("./middleware/upload");
+const { diskUpload, memUpload, sanitizeFilename, validateMagicBytes } = require("./middleware/upload");
 const errorHandler = require("./middleware/error");
 const { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask } = require("./middleware/validate");
 const { extract } = require("./services/ocr");
@@ -18,7 +23,10 @@ const {
   MAINTENANCE_FILE,
   CALENDAR_FILE,
   PLANTS_FILE,
+  USERS_FILE,
   CORS_ORIGIN,
+  SESSION_SECRET,
+  COOKIE_SECURE,
   WEATHER_LAT,
   WEATHER_LON,
   WEATHER_LOCATION,
@@ -32,11 +40,71 @@ if (CORS_ORIGIN) {
   app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 }
 
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+app.use(express.json({ limit: "256kb" }));
+app.use(express.urlencoded({ extended: true, limit: "256kb" }));
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 app.use("/uploads", express.static(UPLOADS_DIR));
+
+// ── Session ───────────────────────────────────────────────────────────────────
+
+app.set("trust proxy", "loopback");
+
+const resolvedSecret = SESSION_SECRET || (() => {
+  console.warn("[auth] SESSION_SECRET not set — using ephemeral secret. Sessions will be lost on restart.");
+  return crypto.randomBytes(32).toString("hex");
+})();
+
+app.use(session({
+  store: new FileStore({ path: path.join(config.DATA_DIR, "sessions"), ttl: 7 * 24 * 60 * 60, retries: 1 }),
+  secret: resolvedSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: COOKIE_SECURE,
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  },
+}));
+
+// ── Rate limiters ─────────────────────────────────────────────────────────────
+
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 429, message: "Too many requests, please slow down." } },
+});
+
+const ocrLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 429, message: "Too many OCR requests, please wait." } },
+});
+
+const weatherLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 429, message: "Too many weather requests, please wait." } },
+});
+
+app.use("/api", globalLimiter);
+
+// ── Global auth guard ─────────────────────────────────────────────────────────
+
+const PUBLIC_API_PATHS = new Set(["/ping", "/health", "/weather", "/auth/login", "/auth/logout"]);
+
+app.use("/api", (req, res, next) => {
+  if (PUBLIC_API_PATHS.has(req.path)) return next();
+  if (req.session?.userId) return next();
+  res.status(401).json({ error: { code: 401, message: "Authentication required" } });
+});
 
 // ── Sample data ───────────────────────────────────────────────────────────────
 
@@ -88,6 +156,49 @@ const parsePayload = (req) => {
 };
 
 const nextId = (items) => items.reduce((max, item) => Math.max(max, item.id || 0), 0) + 1;
+
+// ── User seeding ──────────────────────────────────────────────────────────────
+
+const seedUsers = () => {
+  if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD) return;
+  const users = safeLoad(USERS_FILE, []);
+  if (users.length > 0) return;
+  const passwordHash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12);
+  saveFile(USERS_FILE, [{ id: crypto.randomUUID(), username: process.env.ADMIN_USERNAME, passwordHash }]);
+  console.log(`[auth] Created initial user "${process.env.ADMIN_USERNAME}"`);
+};
+seedUsers();
+
+// ── Auth routes ───────────────────────────────────────────────────────────────
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: { code: 429, message: "Too many login attempts, please try again later." } },
+});
+
+app.post("/api/auth/login", loginLimiter, async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: { code: 400, message: "Username and password required" } });
+  }
+  const users = safeLoad(USERS_FILE, []);
+  const user = users.find(u => u.username === username);
+  if (!user || !await bcrypt.compare(password, user.passwordHash)) {
+    return res.status(401).json({ error: { code: 401, message: "Invalid username or password" } });
+  }
+  req.session.userId = user.id;
+  req.session.username = user.username;
+  res.json({ id: user.id, username: user.username });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get("/api/auth/me", (req, res) => {
+  res.json({ id: req.session.userId, username: req.session.username });
+});
 
 const generateInvoiceNo = (invoices) => {
   const year = new Date().getFullYear();
@@ -178,7 +289,7 @@ app.get("/api/ping", (_, res) => res.json({ ok: true }));
 
 // ── Weather ───────────────────────────────────────────────────────────────────
 
-app.get("/api/weather", async (_, res, next) => {
+app.get("/api/weather", weatherLimiter, async (_, res, next) => {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=auto`;
   try {
     const payload = await fetchJson(url);
@@ -209,11 +320,12 @@ app.get("/api/weather", async (_, res, next) => {
 
 // ── OCR (4.3) ─────────────────────────────────────────────────────────────────
 
-app.post("/api/ocr", memUpload.single("file"), async (req, res, next) => {
+app.post("/api/ocr", ocrLimiter, memUpload.single("file"), async (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({ error: { code: 400, message: "No file provided" } });
   }
   try {
+    validateMagicBytes(req.file);
     const { tokens } = await extract(req.file.buffer, req.file.mimetype);
     res.json({ tokens });
   } catch (err) {
@@ -227,6 +339,7 @@ app.get("/api/invoices", (_, res) => res.json(safeLoad(INVOICES_FILE, SAMPLE_INV
 
 app.post("/api/invoices", diskUpload.single("file"), (req, res, next) => {
   try {
+    if (req.file) validateMagicBytes(req.file);
     const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
     const { id: _id, ...payload } = parsePayload(req);
     validateInvoice(payload);
@@ -248,6 +361,7 @@ app.post("/api/invoices", diskUpload.single("file"), (req, res, next) => {
 
 app.put("/api/invoices/:id", diskUpload.single("file"), (req, res, next) => {
   try {
+    if (req.file) validateMagicBytes(req.file);
     const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
     const id = parseInt(req.params.id, 10);
     const idx = invoices.findIndex(item => item.id === id);
@@ -285,6 +399,7 @@ app.get("/api/recipes", (_, res) => res.json(safeLoad(RECIPES_FILE, SAMPLE_RECIP
 
 app.post("/api/recipes", diskUpload.single("image"), (req, res, next) => {
   try {
+    if (req.file) validateMagicBytes(req.file);
     const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
     const { id: _id, ...payload } = parsePayload(req);
     validateRecipe(payload);
@@ -303,6 +418,7 @@ app.post("/api/recipes", diskUpload.single("image"), (req, res, next) => {
 
 app.put("/api/recipes/:id", diskUpload.single("image"), (req, res, next) => {
   try {
+    if (req.file) validateMagicBytes(req.file);
     const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
     const id = parseInt(req.params.id, 10);
     const idx = recipes.findIndex(item => item.id === id);
@@ -352,6 +468,7 @@ app.get("/api/maintenance", (_, res) => res.json(safeLoad(MAINTENANCE_FILE, SAMP
 
 app.post("/api/maintenance", diskUpload.single("photo"), (req, res, next) => {
   try {
+    if (req.file) validateMagicBytes(req.file);
     const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
     const { id: _id, ...payload } = parsePayload(req);
     validateMaintenanceTask(payload);
@@ -370,6 +487,7 @@ app.post("/api/maintenance", diskUpload.single("photo"), (req, res, next) => {
 
 app.put("/api/maintenance/:id", diskUpload.single("photo"), (req, res, next) => {
   try {
+    if (req.file) validateMagicBytes(req.file);
     const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
     const id = parseInt(req.params.id, 10);
     const idx = maintenance.findIndex(item => item.id === id);
@@ -467,6 +585,9 @@ app.delete("/api/calendar/providers/:id", (req, res, next) => {
   }
 });
 
+const PRIVATE_IP_RE = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|::1$|localhost$)/i;
+const MAX_ICS_BYTES = 5 * 1024 * 1024;
+
 app.post("/api/calendar-import", async (req, res, next) => {
   const { url, provider } = req.body;
   if (!url) return res.status(400).json({ error: { code: 400, message: "URL required" } });
@@ -474,6 +595,17 @@ app.post("/api/calendar-import", async (req, res, next) => {
   let fetchUrl = url;
   if (url.startsWith("webcal://")) fetchUrl = url.replace("webcal://", "https://");
   else if (url.startsWith("webcals://")) fetchUrl = url.replace("webcals://", "https://");
+
+  let parsed;
+  try { parsed = new URL(fetchUrl); } catch {
+    return res.status(400).json({ error: { code: 400, message: "Invalid URL." } });
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return res.status(400).json({ error: { code: 400, message: "Only http and https URLs are allowed." } });
+  }
+  if (PRIVATE_IP_RE.test(parsed.hostname)) {
+    return res.status(400).json({ error: { code: 400, message: "Private or local URLs are not permitted." } });
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -492,7 +624,19 @@ app.post("/api/calendar-import", async (req, res, next) => {
       return res.status(response.status).json({ error: { code: response.status, message: `Calendar server returned HTTP ${response.status}.` } });
     }
 
-    const content = await response.text();
+    const reader = response.body.getReader();
+    let received = 0;
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+      if (received > MAX_ICS_BYTES) {
+        return res.status(413).json({ error: { code: 413, message: "Calendar response too large (max 5 MB)." } });
+      }
+      chunks.push(value);
+    }
+    const content = Buffer.concat(chunks).toString("utf8");
 
     if (content.trimStart().startsWith("<")) {
       return res.status(400).json({ error: { code: 400, message: "The URL returned an HTML page instead of calendar data. Make sure the calendar is set to public sharing and use the ICS/webcal export link." } });
@@ -522,6 +666,17 @@ app.post("/api/calendar-import", async (req, res, next) => {
 
 const hue = require("./services/hue");
 
+const HUE_STATE_KEYS = new Set(["on", "bri", "hue", "sat", "ct", "xy", "transitiontime", "effect", "alert"]);
+const HUE_ACTION_KEYS = new Set(["on", "bri", "hue", "sat", "ct", "xy", "transitiontime", "effect", "alert", "scene"]);
+
+const filterHuePayload = (body, allowedKeys) => {
+  const filtered = {};
+  for (const key of allowedKeys) {
+    if (key in body) filtered[key] = body[key];
+  }
+  return filtered;
+};
+
 const requireHue = (req, res, next) => {
   if (!HUE_BRIDGE_IP || !HUE_API_KEY) {
     return res.status(503).json({ error: { code: 503, message: "Hue not configured. Set HUE_BRIDGE_IP and HUE_API_KEY." } });
@@ -549,7 +704,7 @@ app.get("/api/hue/groups", requireHue, async (req, res, next) => {
 
 app.put("/api/hue/lights/:id/state", requireHue, async (req, res, next) => {
   try {
-    const result = await hue.setLightState(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, req.body);
+    const result = await hue.setLightState(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, filterHuePayload(req.body, HUE_STATE_KEYS));
     res.json(result);
   } catch (err) {
     next(Object.assign(err, { status: 502 }));
@@ -558,7 +713,7 @@ app.put("/api/hue/lights/:id/state", requireHue, async (req, res, next) => {
 
 app.put("/api/hue/groups/:id/action", requireHue, async (req, res, next) => {
   try {
-    const result = await hue.setGroupAction(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, req.body);
+    const result = await hue.setGroupAction(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, filterHuePayload(req.body, HUE_ACTION_KEYS));
     res.json(result);
   } catch (err) {
     next(Object.assign(err, { status: 502 }));
