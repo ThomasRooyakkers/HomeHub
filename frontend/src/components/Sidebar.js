@@ -1,4 +1,4 @@
-export default function Sidebar({ activeTool, setActiveTool, tools, showToast }) {
+export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -26,6 +26,32 @@ export default function Sidebar({ activeTool, setActiveTool, tools, showToast })
           );
         })}
       </nav>
+
+      {currentUser && (
+        <div style={{ marginTop: "auto", borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
+          <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6b7280" }}>
+            Signed in as <strong style={{ color: "#111827" }}>{currentUser.username}</strong>
+          </p>
+          <button
+            onClick={onLogout}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              background: "transparent",
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#6b7280",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              textAlign: "left",
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

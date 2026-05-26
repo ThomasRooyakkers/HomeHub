@@ -7,7 +7,7 @@ export class ApiError extends Error {
 }
 
 export const apiFetch = async (url, options = {}) => {
-  const response = await fetch(url, options);
+  const response = await fetch(url, { credentials: "include", ...options });
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
     try {

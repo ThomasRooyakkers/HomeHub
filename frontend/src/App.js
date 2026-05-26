@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { apiFetch } from "./lib/api";
+import { apiFetch, ApiError } from "./lib/api";
 import Toast from "./components/Toast";
+import Login from "./components/Login";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
 import InvoiceTracker from "./components/InvoiceTracker";
@@ -60,6 +61,8 @@ export default function App() {
   const [weatherHourly, setWeatherHourly]   = useState([]);
   const [weatherError, setWeatherError]     = useState(null);
   const [apiEnabled, setApiEnabled]         = useState(false);
+  const [currentUser, setCurrentUser]       = useState(null);
+  const [needsLogin, setNeedsLogin]         = useState(false);
   const [toast, setToast]                   = useState(null);
 
   const calProvidersRef = useRef(calendarProviders);
@@ -98,41 +101,60 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [loadWeather]);
 
-  // Load from backend once on mount
+  const loadBackendData = useCallback(async () => {
+    const results = await Promise.allSettled([
+      apiFetch("/api/invoices"),
+      apiFetch("/api/recipes"),
+      apiFetch("/api/meal-plan"),
+      apiFetch("/api/maintenance"),
+      apiFetch("/api/calendar"),
+      apiFetch("/api/plants"),
+    ]);
+
+    const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData] =
+      results.map(r => r.status === "fulfilled" ? r.value : null);
+
+    if (invoiceData) setInvoices(invoiceData);
+    if (recipeData) setRecipes(recipeData);
+    if (mealData) setMealPlan(mealData);
+    if (maintenanceData) setMaintenance(maintenanceData);
+    if (calendarData) {
+      setCalProviders(calendarData.providers || []);
+      setCalEvents(calendarData.events || []);
+    }
+    if (plantData) setPlants(plantData);
+  }, []);
+
+  // Check auth status on mount
   useEffect(() => {
-    const loadData = async () => {
+    const init = async () => {
       try {
-        const ping = await apiFetch("/api/ping");
-        if (!ping?.ok) return;
-      } catch {
-        return;
+        const user = await apiFetch("/api/auth/me");
+        setCurrentUser(user);
+        setApiEnabled(true);
+        await loadBackendData();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          setNeedsLogin(true);
+        }
+        // network error → offline / localStorage mode, no login prompt
       }
-      setApiEnabled(true);
-
-      const results = await Promise.allSettled([
-        apiFetch("/api/invoices"),
-        apiFetch("/api/recipes"),
-        apiFetch("/api/meal-plan"),
-        apiFetch("/api/maintenance"),
-        apiFetch("/api/calendar"),
-        apiFetch("/api/plants"),
-      ]);
-
-      const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData] =
-        results.map(r => r.status === "fulfilled" ? r.value : null);
-
-      if (invoiceData) setInvoices(invoiceData);
-      if (recipeData) setRecipes(recipeData);
-      if (mealData) setMealPlan(mealData);
-      if (maintenanceData) setMaintenance(maintenanceData);
-      if (calendarData) {
-        setCalProviders(calendarData.providers || []);
-        setCalEvents(calendarData.events || []);
-      }
-      if (plantData) setPlants(plantData);
     };
+    init();
+  }, [loadBackendData]);
 
-    loadData();
+  const handleLogin = useCallback(async (user) => {
+    setCurrentUser(user);
+    setNeedsLogin(false);
+    setApiEnabled(true);
+    await loadBackendData();
+  }, [loadBackendData]);
+
+  const handleLogout = useCallback(async () => {
+    try { await apiFetch("/api/auth/logout", { method: "POST" }); } catch {}
+    setCurrentUser(null);
+    setApiEnabled(false);
+    setNeedsLogin(true);
   }, []);
 
   const refreshCalendars = async () => {
@@ -228,11 +250,15 @@ export default function App() {
     showToast("Task updated");
   };
 
+  if (needsLogin) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className="app-root">
       <Toast toast={toast} />
       <div className="app-layout">
-        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} />
+        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} />
         <main className="app-main">
           {activeTool === "dashboard" && (
             <ErrorBoundary key="dashboard">

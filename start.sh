@@ -1,3 +1,3 @@
 #!/bin/sh
-node server.js &
+su-exec node node server.js &
 nginx -g "daemon off;"
