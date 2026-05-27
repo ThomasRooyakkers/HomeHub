@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiFetch } from "../lib/api";
 
-const CATEGORIES = ["Plumber", "Electrician", "Doctor", "Dentist", "Vet", "Locksmith", "Handyman", "Landlord", "Insurance", "Other"];
+const DEFAULT_CATEGORIES = ["Plumber", "Electrician", "Doctor", "Dentist", "Vet", "Locksmith", "Handyman", "Landlord", "Insurance", "Other"];
 
 const CAT_ICONS = {
   Plumber: "🔧", Electrician: "⚡", Doctor: "🏥", Dentist: "🦷",
@@ -32,6 +32,11 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [customCats, setCustomCats] = useState([]);
+  const [newCatInput, setNewCatInput] = useState("");
+  const [showCatManager, setShowCatManager] = useState(false);
+
+  const allCategories = [...DEFAULT_CATEGORIES, ...customCats.filter(c => !DEFAULT_CATEGORIES.includes(c))];
 
   const visible = contacts
     .filter(c => catFilter === "All" || c.category === catFilter)
@@ -84,13 +89,27 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
     } catch { showToast("Failed to delete", "danger"); }
   };
 
+  const addCustomCategory = () => {
+    const cat = newCatInput.trim();
+    if (!cat || allCategories.includes(cat)) return;
+    setCustomCats(prev => [...prev, cat]);
+    setNewCatInput("");
+  };
+
+  const removeCustomCategory = (cat) => {
+    setCustomCats(prev => prev.filter(c => c !== cat));
+  };
+
   const usedCats = [...new Set(contacts.map(c => c.category))].sort();
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "28px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#111827" }}>📞 Household Contacts</h2>
-        <button style={btnPrimary} onClick={openNew}>+ Add Contact</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={btnSecondary} onClick={() => setShowCatManager(true)}>Categories</button>
+          <button style={btnPrimary} onClick={openNew}>+ Add Contact</button>
+        </div>
       </div>
 
       {/* Search + filter */}
@@ -102,7 +121,7 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
           onChange={e => setSearch(e.target.value)}
         />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {["All", ...usedCats].map(c => (
+          {["All", ...allCategories.filter(c => usedCats.includes(c) || DEFAULT_CATEGORIES.includes(c)), ...customCats.filter(c => !usedCats.includes(c) && !DEFAULT_CATEGORIES.includes(c))].filter((c, i, arr) => arr.indexOf(c) === i).map(c => (
             <button
               key={c}
               onClick={() => setCatFilter(c)}
@@ -169,7 +188,7 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
               <div>
                 <label style={labelStyle}>Category</label>
                 <select style={inputStyle} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c]} {c}</option>)}
+                  {allCategories.map(c => <option key={c} value={c}>{CAT_ICONS[c] || "📋"} {c}</option>)}
                 </select>
               </div>
               <div>
@@ -192,6 +211,58 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
                 <button style={btnPrimary} onClick={saveForm}>Save</button>
                 <button style={btnSecondary} onClick={closeModal}>Cancel</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category manager modal */}
+      {showCatManager && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowCatManager(false)}>
+          <div className="modal-box" style={{ maxWidth: 420 }}>
+            <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 700 }}>Manage Categories</h3>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Default</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {DEFAULT_CATEGORIES.map(c => (
+                  <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 10, background: "#f1f5f9", color: "#374151", fontSize: 13, fontWeight: 600 }}>
+                    {CAT_ICONS[c] || "📋"} {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {customCats.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Custom</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {customCats.map(c => (
+                    <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: "#f1f5f9", color: "#374151", fontSize: 13, fontWeight: 600 }}>
+                      📋 {c}
+                      <button onClick={() => removeCustomCategory(c)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label style={labelStyle}>Add Custom Category</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  style={{ ...inputStyle, flex: 1 }}
+                  value={newCatInput}
+                  onChange={e => setNewCatInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && addCustomCategory()}
+                  placeholder="e.g. Accountant"
+                />
+                <button style={btnPrimary} onClick={addCustomCategory}>Add</button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <button style={btnSecondary} onClick={() => setShowCatManager(false)}>Done</button>
             </div>
           </div>
         </div>

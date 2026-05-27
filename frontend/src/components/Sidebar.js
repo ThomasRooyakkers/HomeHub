@@ -1,5 +1,6 @@
 export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout, settings }) {
-  const visibleTools = tools.filter(t => t.id !== "admin" || currentUser?.role === "admin");
+  const visibleTools = tools.filter(t => t.id !== "admin");
+  const isAdmin = currentUser?.role === "admin";
   const appName = settings?.appName || "HomeHub";
   const householdName = settings?.householdName || "";
 
@@ -23,7 +24,7 @@ export default function Sidebar({ activeTool, setActiveTool, tools, showToast, c
             <button
               key={tool.id}
               onClick={() => tool.active ? setActiveTool(tool.id) : showToast(`${tool.name} is coming soon.`)}
-              className={`nav-btn${isActive ? ' nav-btn--active' : ''}`}
+              className={`nav-btn${isActive ? ' nav-btn--active' : ''}${tool.mobileVisible === false ? ' nav-btn--mobile-hidden' : ''}`}
             >
               <span className="nav-btn__icon">{tool.icon}</span>
               <span className="nav-btn__label">{tool.shortName || tool.name}</span>
@@ -34,9 +35,30 @@ export default function Sidebar({ activeTool, setActiveTool, tools, showToast, c
 
       {currentUser && (
         <div style={{ marginTop: "auto", borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
-          <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6b7280" }}>
-            Signed in as <strong style={{ color: "#111827" }}>{currentUser.username}</strong>
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "#6b7280", flex: 1 }}>
+              Signed in as <strong style={{ color: "#111827" }}>{currentUser.username}</strong>
+            </p>
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTool("admin")}
+                title="Admin settings"
+                style={{
+                  padding: "6px",
+                  background: activeTool === "admin" ? "var(--accent, #16a34a)" : "transparent",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  fontSize: 16,
+                  color: activeTool === "admin" ? "#fff" : "#6b7280",
+                  cursor: "pointer",
+                  lineHeight: 1,
+                  flexShrink: 0,
+                }}
+              >
+                ⚙️
+              </button>
+            )}
+          </div>
           <button
             onClick={onLogout}
             style={{

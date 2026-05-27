@@ -179,6 +179,8 @@ html, body, #root {
 /* ── Mobile: bottom tab navigation ──────────────────────────────────────── */
 
 @media (max-width: 640px) {
+  .nav-btn--mobile-hidden { display: none; }
+
   .app-root {
     padding: 12px 12px 0;
   }

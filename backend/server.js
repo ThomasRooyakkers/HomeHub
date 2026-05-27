@@ -56,7 +56,7 @@ const resolvedSecret = SESSION_SECRET || (() => {
 })();
 
 app.use(session({
-  store: new FileStore({ path: path.join(config.DATA_DIR, "sessions"), ttl: 7 * 24 * 60 * 60, retries: 1 }),
+  store: new FileStore({ path: path.join(config.DATA_DIR, "sessions"), ttl: 90 * 24 * 60 * 60, retries: 1 }),
   secret: resolvedSecret,
   resave: false,
   saveUninitialized: false,
@@ -64,7 +64,7 @@ app.use(session({
     httpOnly: true,
     secure: COOKIE_SECURE,
     sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 90 * 24 * 60 * 60 * 1000,
   },
 }));
 
@@ -211,7 +211,8 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
   }
   req.session.userId = user.id;
   req.session.username = user.username;
-  res.json({ id: user.id, username: user.username });
+  req.session.role = user.role || "user";
+  res.json({ id: user.id, username: user.username, role: user.role || "user" });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -219,7 +220,7 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 app.get("/api/auth/me", (req, res) => {
-  res.json({ id: req.session.userId, username: req.session.username });
+  res.json({ id: req.session.userId, username: req.session.username, role: req.session.role || "user" });
 });
 
 const generateInvoiceNo = (invoices) => {

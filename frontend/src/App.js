@@ -18,17 +18,17 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 const HOME_TOOLS = [
-  { id: "dashboard",   name: "Dashboard",          shortName: "Dashboard", icon: "📊", description: "Overview of paid bills, meal plans, home tasks and calendar events.", active: true },
-  { id: "invoices",    name: "Invoice Tracker",     shortName: "Invoices",  icon: "🧾", description: "Track household bills, due dates, and payment status.",             active: true },
-  { id: "shopping",    name: "Shopping List",       shortName: "Shopping",  icon: "🛒", description: "BRING-style shopping lists per store.",                            active: true },
-  { id: "meal",        name: "Meal Planner",        shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true },
-  { id: "maintenance", name: "Home Maintenance",    shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true },
-  { id: "calendar",    name: "Calendar",            shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
-  { id: "plants",      name: "Plant Manager",       shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true },
-  { id: "documents",   name: "Document Vault",      shortName: "Documents", icon: "📁", description: "Store warranty cards, insurance, and important documents.",         active: true },
-  { id: "contacts",    name: "Household Contacts",  shortName: "Contacts",  icon: "📞", description: "Quick access to your home service contacts.",                       active: true },
-  { id: "inventory",   name: "Home Inventory",      shortName: "Inventory", icon: "🏷️", description: "Track appliances, warranties, and serial numbers.",                 active: true },
-  { id: "admin",       name: "Admin",               shortName: "Admin",     icon: "⚙️", description: "User management, settings, and system stats.",                      active: true },
+  { id: "dashboard",   name: "Dashboard",          shortName: "Dashboard", icon: "📊", description: "Overview of paid bills, meal plans, home tasks and calendar events.", active: true,  mobileVisible: true },
+  { id: "invoices",    name: "Invoice Tracker",     shortName: "Invoices",  icon: "🧾", description: "Track household bills, due dates, and payment status.",             active: true,  mobileVisible: true },
+  { id: "shopping",    name: "Shopping List",       shortName: "Shopping",  icon: "🛒", description: "BRING-style shopping lists per store.",                            active: true,  mobileVisible: true },
+  { id: "meal",        name: "Meal Planner",        shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true,  mobileVisible: true },
+  { id: "maintenance", name: "Home Maintenance",    shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true,  mobileVisible: false },
+  { id: "calendar",    name: "Calendar",            shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true,  mobileVisible: false },
+  { id: "plants",      name: "Plant Manager",       shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true,  mobileVisible: false },
+  { id: "documents",   name: "Document Vault",      shortName: "Documents", icon: "📁", description: "Store warranty cards, insurance, and important documents.",         active: true,  mobileVisible: false },
+  { id: "contacts",    name: "Household Contacts",  shortName: "Contacts",  icon: "📞", description: "Quick access to your home service contacts.",                       active: true,  mobileVisible: false },
+  { id: "inventory",   name: "Home Inventory",      shortName: "Inventory", icon: "🏷️", description: "Track appliances, warranties, and serial numbers.",                 active: true,  mobileVisible: false },
+  { id: "admin",       name: "Admin",               shortName: "Admin",     icon: "⚙️", description: "User management, settings, and system stats.",                      active: true,  mobileVisible: false },
 ];
 
 const SAMPLE_INVOICES = [
@@ -151,10 +151,8 @@ export default function App() {
         setApiEnabled(true);
         await loadBackendData();
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          setNeedsLogin(true);
-        }
-        // network error → offline / localStorage mode, no login prompt
+        // Any failure (401 or network down) → require login
+        setNeedsLogin(true);
       }
     };
     init();
