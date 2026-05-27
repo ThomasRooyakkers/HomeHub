@@ -1,3 +1,8 @@
+:root {
+  --accent: #16a34a;
+  --accent-dark: #0f7a2f;
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
@@ -149,12 +154,12 @@ html, body, #root {
 
 .nav-btn--active {
   background: rgba(16, 185, 129, 0.12);
-  box-shadow: inset 4px 0 0 0 #10b981;
+  box-shadow: inset 4px 0 0 0 var(--accent);
 }
 
 .nav-btn__icon  { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
 .nav-btn__label { font-weight: 700; font-size: 15px; color: #111827; }
-.nav-btn--active .nav-btn__label { color: #0f766e; }
+.nav-btn--active .nav-btn__label { color: var(--accent-dark); }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
@@ -242,7 +247,7 @@ html, body, #root {
     text-overflow: ellipsis;
     max-width: 68px;
   }
-  .nav-btn--active .nav-btn__label { color: #0f766e; }
+  .nav-btn--active .nav-btn__label { color: var(--accent-dark); }
 
   .app-main {
     border-radius: 20px;

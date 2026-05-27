@@ -1,18 +1,23 @@
-export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout }) {
+export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout, settings }) {
+  const visibleTools = tools.filter(t => t.id !== "admin" || currentUser?.role === "admin");
+  const appName = settings?.appName || "HomeHub";
+  const householdName = settings?.householdName || "";
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
         <div style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center",
           width: 48, height: 48, borderRadius: 16, background: "#f8fafc",
-          color: "#16a34a", fontSize: 20, marginBottom: 18,
+          color: "var(--accent, #16a34a)", fontSize: 20, marginBottom: 18,
           boxShadow: "0 6px 20px rgba(15,23,42,0.06)",
         }}>🏡</div>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#111827" }}>Home Hub</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#111827" }}>{appName}</h1>
+        {householdName && <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>{householdName}</p>}
       </div>
 
       <nav className="sidebar-nav">
-        {tools.map(tool => {
+        {visibleTools.map(tool => {
           const isActive = activeTool === tool.id;
           return (
             <button
