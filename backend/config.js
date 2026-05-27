@@ -17,9 +17,4 @@ module.exports = {
   CORS_ORIGIN: process.env.CORS_ORIGIN || null,
   SESSION_SECRET: process.env.SESSION_SECRET || null,
   COOKIE_SECURE: process.env.COOKIE_SECURE === "true",
-  WEATHER_LAT: process.env.WEATHER_LAT || "51.05",
-  WEATHER_LON: process.env.WEATHER_LON || "5.45",
-  WEATHER_LOCATION: process.env.WEATHER_LOCATION || "Houthalen-Helchteren, BE",
-  HUE_BRIDGE_IP: process.env.HUE_BRIDGE_IP || null,
-  HUE_API_KEY: process.env.HUE_API_KEY || null,
 };

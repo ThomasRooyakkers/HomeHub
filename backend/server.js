@@ -27,11 +27,6 @@ const {
   CORS_ORIGIN,
   SESSION_SECRET,
   COOKIE_SECURE,
-  WEATHER_LAT,
-  WEATHER_LON,
-  WEATHER_LOCATION,
-  HUE_BRIDGE_IP,
-  HUE_API_KEY,
 } = config;
 
 const app = express();
@@ -86,19 +81,11 @@ const ocrLimiter = rateLimit({
   message: { error: { code: 429, message: "Too many OCR requests, please wait." } },
 });
 
-const weatherLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: { code: 429, message: "Too many weather requests, please wait." } },
-});
-
 app.use("/api", globalLimiter);
 
 // ── Global auth guard ─────────────────────────────────────────────────────────
 
-const PUBLIC_API_PATHS = new Set(["/ping", "/health", "/weather", "/auth/login", "/auth/logout"]);
+const PUBLIC_API_PATHS = new Set(["/ping", "/health", "/auth/login", "/auth/logout"]);
 
 app.use("/api", (req, res, next) => {
   if (PUBLIC_API_PATHS.has(req.path)) return next();
@@ -286,37 +273,6 @@ app.get("/api/health", (_, res) => {
 });
 
 app.get("/api/ping", (_, res) => res.json({ ok: true }));
-
-// ── Weather ───────────────────────────────────────────────────────────────────
-
-app.get("/api/weather", weatherLimiter, async (_, res, next) => {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=auto`;
-  try {
-    const payload = await fetchJson(url);
-    const now = new Date();
-    const hourly = (payload.hourly?.time || []).map((time, index) => ({
-      time,
-      temperature: payload.hourly.temperature_2m?.[index],
-      precipitationProbability: payload.hourly.precipitation_probability?.[index],
-      weathercode: payload.hourly.weathercode?.[index],
-      windspeed: payload.hourly.windspeed_10m?.[index],
-    })).filter(item => new Date(item.time) >= now).slice(0, 24);
-
-    res.json({
-      location: WEATHER_LOCATION,
-      current: {
-        temperature: payload.current_weather?.temperature,
-        windspeed: payload.current_weather?.windspeed,
-        weathercode: payload.current_weather?.weathercode,
-        time: payload.current_weather?.time,
-      },
-      hourly,
-      updatedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    next(Object.assign(error, { status: 502 }));
-  }
-});
 
 // ── OCR (4.3) ─────────────────────────────────────────────────────────────────
 
@@ -659,82 +615,6 @@ app.post("/api/calendar-import", async (req, res, next) => {
       ? "Calendar request timed out after 10 seconds"
       : (error.message || "Failed to import calendar");
     next(Object.assign(new Error(msg), { status: 500 }));
-  }
-});
-
-// ── Philips Hue ───────────────────────────────────────────────────────────────
-
-const hue = require("./services/hue");
-
-const HUE_STATE_KEYS = new Set(["on", "bri", "hue", "sat", "ct", "xy", "transitiontime", "effect", "alert"]);
-const HUE_ACTION_KEYS = new Set(["on", "bri", "hue", "sat", "ct", "xy", "transitiontime", "effect", "alert", "scene"]);
-
-const filterHuePayload = (body, allowedKeys) => {
-  const filtered = {};
-  for (const key of allowedKeys) {
-    if (key in body) filtered[key] = body[key];
-  }
-  return filtered;
-};
-
-const requireHue = (req, res, next) => {
-  if (!HUE_BRIDGE_IP || !HUE_API_KEY) {
-    return res.status(503).json({ error: { code: 503, message: "Hue not configured. Set HUE_BRIDGE_IP and HUE_API_KEY." } });
-  }
-  next();
-};
-
-app.get("/api/hue/lights", requireHue, async (req, res, next) => {
-  try {
-    const lights = await hue.getLights(HUE_BRIDGE_IP, HUE_API_KEY);
-    res.json(lights);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
-});
-
-app.get("/api/hue/groups", requireHue, async (req, res, next) => {
-  try {
-    const groups = await hue.getGroups(HUE_BRIDGE_IP, HUE_API_KEY);
-    res.json(groups);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
-});
-
-app.put("/api/hue/lights/:id/state", requireHue, async (req, res, next) => {
-  try {
-    const result = await hue.setLightState(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, filterHuePayload(req.body, HUE_STATE_KEYS));
-    res.json(result);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
-});
-
-app.put("/api/hue/groups/:id/action", requireHue, async (req, res, next) => {
-  try {
-    const result = await hue.setGroupAction(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, filterHuePayload(req.body, HUE_ACTION_KEYS));
-    res.json(result);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
-});
-
-app.get("/api/hue/scenes", requireHue, async (req, res, next) => {
-  try {
-    const scenes = await hue.getScenes(HUE_BRIDGE_IP, HUE_API_KEY);
-    res.json(scenes);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
-});
-
-app.put("/api/hue/groups/:id/scene", requireHue, async (req, res, next) => {
-  try {
-    const result = await hue.activateScene(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, req.body.scene);
-    res.json(result);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
   }
 });
 

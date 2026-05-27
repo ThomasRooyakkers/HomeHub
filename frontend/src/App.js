@@ -9,8 +9,6 @@ import MealPlanner from "./components/MealPlanner";
 import Maintenance from "./components/Maintenance";
 import CalendarView from "./components/CalendarView";
 import PlantManager from "./components/PlantManager";
-import Weather from "./components/Weather";
-import LightsManager from "./components/LightsManager";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
@@ -20,9 +18,7 @@ const HOME_TOOLS = [
   { id: "meal",        name: "Meal Planner",      shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true },
   { id: "maintenance", name: "Home Maintenance",  shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true },
   { id: "calendar",    name: "Calendar",          shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
-  { id: "weather",     name: "Weather",           shortName: "Weather",   icon: "☁️", description: "Current conditions and hourly forecast for Houthalen-Helchteren.", active: true },
   { id: "plants",      name: "Plant Manager",     shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true },
-  { id: "lights",      name: "Lights",            shortName: "Lights",    icon: "💡", description: "Control Philips Hue lights and rooms.",                              active: true },
 ];
 
 const SAMPLE_INVOICES = [
@@ -57,9 +53,6 @@ export default function App() {
   const [calendarProviders, setCalProviders]= useState(() => loadLocal("calendarProviders", []));
   const [calendarEvents, setCalEvents]      = useState(() => loadLocal("calendarEvents",    []));
   const [plants, setPlants]                 = useState(() => loadLocal("plants",             SAMPLE_PLANTS));
-  const [weatherData, setWeatherData]       = useState(null);
-  const [weatherHourly, setWeatherHourly]   = useState([]);
-  const [weatherError, setWeatherError]     = useState(null);
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
   const [needsLogin, setNeedsLogin]         = useState(false);
@@ -78,28 +71,6 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("calendarProviders", JSON.stringify(calendarProviders));} catch {} }, [calendarProviders]);
   useEffect(() => { try { localStorage.setItem("calendarEvents",    JSON.stringify(calendarEvents));   } catch {} }, [calendarEvents]);
   useEffect(() => { try { localStorage.setItem("plants",            JSON.stringify(plants));           } catch {} }, [plants]);
-
-  const loadWeather = useCallback(async () => {
-    setWeatherError(null);
-    try {
-      const data = await apiFetch("/api/weather");
-      setWeatherData(data.current || null);
-      setWeatherHourly(data.hourly || []);
-    } catch {
-      setWeatherError("Unable to load weather data.");
-    }
-  }, []);
-
-  const refreshWeather = async () => {
-    await loadWeather();
-    showToast("Weather refreshed");
-  };
-
-  useEffect(() => {
-    loadWeather();
-    const intervalId = setInterval(loadWeather, 60 * 60 * 1000);
-    return () => clearInterval(intervalId);
-  }, [loadWeather]);
 
   const loadBackendData = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -265,7 +236,6 @@ export default function App() {
               <Dashboard
                 invoices={invoices} mealPlan={mealPlan} recipes={recipes}
                 maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
-                weatherData={weatherData} weatherHourly={weatherHourly}
                 onNavigate={setActiveTool}
                 onToggleInvoicePaid={toggleInvoicePaid}
                 onToggleMaintenanceDone={toggleMaintenanceDone}
@@ -297,21 +267,12 @@ export default function App() {
               />
             </ErrorBoundary>
           )}
-          {activeTool === "weather" && (
-            <ErrorBoundary key="weather">
-              <Weather weatherData={weatherData} hourly={weatherHourly} onRefresh={refreshWeather} error={weatherError} />
-            </ErrorBoundary>
-          )}
           {activeTool === "plants" && (
             <ErrorBoundary key="plants">
               <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "lights" && (
-            <ErrorBoundary key="lights">
-              <LightsManager apiEnabled={apiEnabled} showToast={showToast} />
-            </ErrorBoundary>
-          )}
+
         </main>
       </div>
     </div>
