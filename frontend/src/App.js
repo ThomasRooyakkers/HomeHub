@@ -9,20 +9,26 @@ import MealPlanner from "./components/MealPlanner";
 import Maintenance from "./components/Maintenance";
 import CalendarView from "./components/CalendarView";
 import PlantManager from "./components/PlantManager";
-import Weather from "./components/Weather";
-import LightsManager from "./components/LightsManager";
+import ShoppingList from "./components/ShoppingList";
+import DocumentVault from "./components/DocumentVault";
+import HouseholdContacts from "./components/HouseholdContacts";
+import HomeInventory from "./components/HomeInventory";
+import Admin from "./components/Admin";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 const HOME_TOOLS = [
-  { id: "dashboard",   name: "Dashboard",        shortName: "Dashboard", icon: "📊", description: "Overview of paid bills, meal plans, home tasks and calendar events.", active: true },
-  { id: "invoices",    name: "Invoice Tracker",   shortName: "Invoices",  icon: "🧾", description: "Track household bills, due dates, and payment status.",             active: true },
-  { id: "meal",        name: "Meal Planner",      shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true },
-  { id: "maintenance", name: "Home Maintenance",  shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true },
-  { id: "calendar",    name: "Calendar",          shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true },
-  { id: "weather",     name: "Weather",           shortName: "Weather",   icon: "☁️", description: "Current conditions and hourly forecast for Houthalen-Helchteren.", active: true },
-  { id: "plants",      name: "Plant Manager",     shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true },
-  { id: "lights",      name: "Lights",            shortName: "Lights",    icon: "💡", description: "Control Philips Hue lights and rooms.",                              active: true },
+  { id: "dashboard",   name: "Dashboard",          shortName: "Dashboard", icon: "📊", description: "Overview of paid bills, meal plans, home tasks and calendar events.", active: true,  mobileVisible: true },
+  { id: "invoices",    name: "Invoice Tracker",     shortName: "Invoices",  icon: "🧾", description: "Track household bills, due dates, and payment status.",             active: true,  mobileVisible: true },
+  { id: "shopping",    name: "Shopping List",       shortName: "Shopping",  icon: "🛒", description: "BRING-style shopping lists per store.",                            active: true,  mobileVisible: true },
+  { id: "meal",        name: "Meal Planner",        shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true,  mobileVisible: true },
+  { id: "maintenance", name: "Home Maintenance",    shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true,  mobileVisible: false },
+  { id: "calendar",    name: "Calendar",            shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true,  mobileVisible: false },
+  { id: "plants",      name: "Plant Manager",       shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true,  mobileVisible: false },
+  { id: "documents",   name: "Document Vault",      shortName: "Documents", icon: "📁", description: "Store warranty cards, insurance, and important documents.",         active: true,  mobileVisible: false },
+  { id: "contacts",    name: "Household Contacts",  shortName: "Contacts",  icon: "📞", description: "Quick access to your home service contacts.",                       active: true,  mobileVisible: false },
+  { id: "inventory",   name: "Home Inventory",      shortName: "Inventory", icon: "🏷️", description: "Track appliances, warranties, and serial numbers.",                 active: true,  mobileVisible: false },
+  { id: "admin",       name: "Admin",               shortName: "Admin",     icon: "⚙️", description: "User management, settings, and system stats.",                      active: true,  mobileVisible: false },
 ];
 
 const SAMPLE_INVOICES = [
@@ -48,6 +54,14 @@ const loadLocal = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key) || "null") || fallback; } catch { return fallback; }
 };
 
+const adjustColor = (hex, amount) => {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.min(255, Math.max(0, (n >> 16) + amount));
+  const g = Math.min(255, Math.max(0, ((n >> 8) & 0xff) + amount));
+  const b = Math.min(255, Math.max(0, (n & 0xff) + amount));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+};
+
 export default function App() {
   const [activeTool, setActiveTool]         = useState("dashboard");
   const [invoices, setInvoices]             = useState(() => loadLocal("invoices",          SAMPLE_INVOICES));
@@ -56,14 +70,23 @@ export default function App() {
   const [maintenanceTasks, setMaintenance]  = useState(() => loadLocal("maintenanceTasks",  SAMPLE_MAINTENANCE));
   const [calendarProviders, setCalProviders]= useState(() => loadLocal("calendarProviders", []));
   const [calendarEvents, setCalEvents]      = useState(() => loadLocal("calendarEvents",    []));
-  const [plants, setPlants]                 = useState(() => loadLocal("plants",             SAMPLE_PLANTS));
-  const [weatherData, setWeatherData]       = useState(null);
-  const [weatherHourly, setWeatherHourly]   = useState([]);
-  const [weatherError, setWeatherError]     = useState(null);
+  const [plants, setPlants]                 = useState(() => loadLocal("plants",    SAMPLE_PLANTS));
+  const [shopping, setShopping]             = useState(() => loadLocal("shopping",  { stores: [], items: [] }));
+  const [documents, setDocuments]           = useState(() => loadLocal("documents", []));
+  const [contacts, setContacts]             = useState(() => loadLocal("contacts",  []));
+  const [inventory, setInventory]           = useState(() => loadLocal("inventory", []));
+  const [settings, setSettings]             = useState({ appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a" });
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
   const [needsLogin, setNeedsLogin]         = useState(false);
   const [toast, setToast]                   = useState(null);
+
+  const applySettings = useCallback((s) => {
+    setSettings(s);
+    document.documentElement.style.setProperty("--accent", s.accentColor || "#16a34a");
+    document.documentElement.style.setProperty("--accent-dark", adjustColor(s.accentColor || "#16a34a", -20));
+    if (s.appName) document.title = s.appName;
+  }, []);
 
   const calProvidersRef = useRef(calendarProviders);
   const calEventsRef    = useRef(calendarEvents);
@@ -77,29 +100,11 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("maintenanceTasks",  JSON.stringify(maintenanceTasks)); } catch {} }, [maintenanceTasks]);
   useEffect(() => { try { localStorage.setItem("calendarProviders", JSON.stringify(calendarProviders));} catch {} }, [calendarProviders]);
   useEffect(() => { try { localStorage.setItem("calendarEvents",    JSON.stringify(calendarEvents));   } catch {} }, [calendarEvents]);
-  useEffect(() => { try { localStorage.setItem("plants",            JSON.stringify(plants));           } catch {} }, [plants]);
-
-  const loadWeather = useCallback(async () => {
-    setWeatherError(null);
-    try {
-      const data = await apiFetch("/api/weather");
-      setWeatherData(data.current || null);
-      setWeatherHourly(data.hourly || []);
-    } catch {
-      setWeatherError("Unable to load weather data.");
-    }
-  }, []);
-
-  const refreshWeather = async () => {
-    await loadWeather();
-    showToast("Weather refreshed");
-  };
-
-  useEffect(() => {
-    loadWeather();
-    const intervalId = setInterval(loadWeather, 60 * 60 * 1000);
-    return () => clearInterval(intervalId);
-  }, [loadWeather]);
+  useEffect(() => { try { localStorage.setItem("plants",    JSON.stringify(plants));    } catch {} }, [plants]);
+  useEffect(() => { try { localStorage.setItem("shopping",  JSON.stringify(shopping));  } catch {} }, [shopping]);
+  useEffect(() => { try { localStorage.setItem("documents", JSON.stringify(documents)); } catch {} }, [documents]);
+  useEffect(() => { try { localStorage.setItem("contacts",  JSON.stringify(contacts));  } catch {} }, [contacts]);
+  useEffect(() => { try { localStorage.setItem("inventory", JSON.stringify(inventory)); } catch {} }, [inventory]);
 
   const loadBackendData = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -109,9 +114,15 @@ export default function App() {
       apiFetch("/api/maintenance"),
       apiFetch("/api/calendar"),
       apiFetch("/api/plants"),
+      apiFetch("/api/shopping"),
+      apiFetch("/api/documents"),
+      apiFetch("/api/contacts"),
+      apiFetch("/api/inventory"),
+      apiFetch("/api/settings"),
     ]);
 
-    const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData] =
+    const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData,
+           shoppingData, documentsData, contactsData, inventoryData, settingsData] =
       results.map(r => r.status === "fulfilled" ? r.value : null);
 
     if (invoiceData) setInvoices(invoiceData);
@@ -123,7 +134,13 @@ export default function App() {
       setCalEvents(calendarData.events || []);
     }
     if (plantData) setPlants(plantData);
-  }, []);
+    if (shoppingData) setShopping(shoppingData);
+    if (documentsData) setDocuments(documentsData);
+    if (contactsData) setContacts(contactsData);
+    if (inventoryData) setInventory(inventoryData);
+    if (settingsData) applySettings(settingsData);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applySettings]);
 
   // Check auth status on mount
   useEffect(() => {
@@ -134,10 +151,8 @@ export default function App() {
         setApiEnabled(true);
         await loadBackendData();
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          setNeedsLogin(true);
-        }
-        // network error → offline / localStorage mode, no login prompt
+        // Any failure (401 or network down) → require login
+        setNeedsLogin(true);
       }
     };
     init();
@@ -156,6 +171,39 @@ export default function App() {
     setApiEnabled(false);
     setNeedsLogin(true);
   }, []);
+
+  const refreshResource = useCallback(async (resource) => {
+    try {
+      switch (resource) {
+        case "invoices": { const d = await apiFetch("/api/invoices"); if (d) setInvoices(d); break; }
+        case "recipes":  { const d = await apiFetch("/api/recipes");  if (d) setRecipes(d);  break; }
+        case "mealPlan": { const d = await apiFetch("/api/meal-plan"); if (d) setMealPlan(d); break; }
+        case "maintenance": { const d = await apiFetch("/api/maintenance"); if (d) setMaintenance(d); break; }
+        case "plants":   { const d = await apiFetch("/api/plants");   if (d) setPlants(d);   break; }
+        case "calendar": {
+          const d = await apiFetch("/api/calendar");
+          if (d) { setCalProviders(d.providers || []); setCalEvents(d.events || []); }
+          break;
+        }
+        case "shopping":   { const d = await apiFetch("/api/shopping");   if (d) setShopping(d);   break; }
+        case "documents":  { const d = await apiFetch("/api/documents");  if (d) setDocuments(d);  break; }
+        case "contacts":   { const d = await apiFetch("/api/contacts");   if (d) setContacts(d);   break; }
+        case "inventory":  { const d = await apiFetch("/api/inventory");  if (d) setInventory(d);  break; }
+        case "settings":   { const d = await apiFetch("/api/settings");   if (d) applySettings(d); break; }
+        default: break;
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!apiEnabled) return;
+    const es = new EventSource("/api/events");
+    es.onmessage = (e) => {
+      try { const { resource } = JSON.parse(e.data); refreshResource(resource); } catch {}
+    };
+    return () => es.close();
+  }, [apiEnabled, refreshResource]);
 
   const refreshCalendars = async () => {
     const urlProviders = calProvidersRef.current.filter(
@@ -258,14 +306,14 @@ export default function App() {
     <div className="app-root">
       <Toast toast={toast} />
       <div className="app-layout">
-        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} />
+        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} settings={settings} />
         <main className="app-main">
           {activeTool === "dashboard" && (
             <ErrorBoundary key="dashboard">
               <Dashboard
                 invoices={invoices} mealPlan={mealPlan} recipes={recipes}
                 maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
-                weatherData={weatherData} weatherHourly={weatherHourly}
+                shopping={shopping} documents={documents} contacts={contacts} inventory={inventory}
                 onNavigate={setActiveTool}
                 onToggleInvoicePaid={toggleInvoicePaid}
                 onToggleMaintenanceDone={toggleMaintenanceDone}
@@ -297,19 +345,34 @@ export default function App() {
               />
             </ErrorBoundary>
           )}
-          {activeTool === "weather" && (
-            <ErrorBoundary key="weather">
-              <Weather weatherData={weatherData} hourly={weatherHourly} onRefresh={refreshWeather} error={weatherError} />
-            </ErrorBoundary>
-          )}
           {activeTool === "plants" && (
             <ErrorBoundary key="plants">
               <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "lights" && (
-            <ErrorBoundary key="lights">
-              <LightsManager apiEnabled={apiEnabled} showToast={showToast} />
+          {activeTool === "shopping" && (
+            <ErrorBoundary key="shopping">
+              <ShoppingList shopping={shopping} setShopping={setShopping} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
+          )}
+          {activeTool === "documents" && (
+            <ErrorBoundary key="documents">
+              <DocumentVault documents={documents} setDocuments={setDocuments} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
+          )}
+          {activeTool === "contacts" && (
+            <ErrorBoundary key="contacts">
+              <HouseholdContacts contacts={contacts} setContacts={setContacts} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
+          )}
+          {activeTool === "inventory" && (
+            <ErrorBoundary key="inventory">
+              <HomeInventory inventory={inventory} setInventory={setInventory} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
+          )}
+          {activeTool === "admin" && currentUser?.role === "admin" && (
+            <ErrorBoundary key="admin">
+              <Admin currentUser={currentUser} settings={settings} applySettings={applySettings} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
         </main>

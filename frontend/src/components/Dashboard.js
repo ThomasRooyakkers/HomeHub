@@ -77,7 +77,11 @@ function MaintenanceRow({ task, onToggle }) {
 
 export default function Dashboard({
   invoices, mealPlan, recipes, maintenanceTasks,
-  calendarEvents, weatherData, weatherHourly,
+  calendarEvents,
+  shopping = { stores: [], items: [] },
+  documents = [],
+  contacts = [],
+  inventory = [],
   onNavigate,
   onToggleInvoicePaid, onToggleMaintenanceDone,
 }) {
@@ -128,7 +132,24 @@ export default function Dashboard({
     [invoices]
   );
 
-  const allClear = overdueInvoices.length === 0 && dueSoonInvoices.length === 0 && maintenanceDue.length === 0;
+  // New module stats
+  const shoppingUnchecked = useMemo(() => (shopping.items || []).filter(i => !i.checked).length, [shopping]);
+  const shoppingStores = (shopping.stores || []).length;
+
+  const docsExpiringSoon = useMemo(() => documents.filter(d => {
+    if (!d.expiryDate) return false;
+    const days = Math.ceil((new Date(d.expiryDate) - now) / 86400000);
+    return days <= 30;
+  }), [documents, now]);
+
+  const warrantyExpiring = useMemo(() => inventory.filter(i => {
+    if (!i.warrantyExpiry) return false;
+    const days = Math.ceil((new Date(i.warrantyExpiry) - now) / 86400000);
+    return days <= 90;
+  }), [inventory, now]);
+
+  const allClear = overdueInvoices.length === 0 && dueSoonInvoices.length === 0 && maintenanceDue.length === 0
+    && docsExpiringSoon.length === 0 && warrantyExpiring.length === 0;
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -188,6 +209,34 @@ export default function Dashboard({
         ))}
       </div>
 
+      {/* ── Module quick stats ──────────────────────────────────────────────── */}
+      <div className="stats-grid">
+        {[
+          { label: "Shopping items left", value: shoppingUnchecked, subLabel: `${shoppingStores} store${shoppingStores !== 1 ? "s" : ""}`, to: "shopping", icon: "🛒", alert: false },
+          { label: "Documents expiring", value: docsExpiringSoon.length, subLabel: `${documents.length} total`, to: "documents", icon: "📁", alert: docsExpiringSoon.length > 0 },
+          { label: "Contacts", value: contacts.length, subLabel: "household", to: "contacts", icon: "📞", alert: false },
+          { label: "Warranty alerts", value: warrantyExpiring.length, subLabel: `${inventory.length} items tracked`, to: "inventory", icon: "🏷️", alert: warrantyExpiring.length > 0 },
+        ].map(card => (
+          <button
+            key={card.label}
+            onClick={() => onNavigate(card.to)}
+            style={{
+              background: card.alert ? "linear-gradient(135deg, #fffbeb, #fef3c7)" : "rgba(255,255,255,0.9)",
+              border: card.alert ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(0,0,0,0.06)",
+              borderRadius: 20, padding: "18px 20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              textAlign: "left", cursor: "pointer", transition: "transform 0.15s ease",
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = "translateY(-2px)"}
+            onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
+          >
+            <p style={{ margin: 0, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{card.icon} {card.label}</p>
+            <p style={{ margin: "8px 0 2px", fontSize: 28, fontWeight: 800, color: card.alert ? "#d97706" : "#111827" }}>{card.value}</p>
+            <p style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}>{card.subLabel}</p>
+          </button>
+        ))}
+      </div>
+
       {/* ── Main body ─────────────────────────────────────────────────────────── */}
       <div className="dashboard-main">
 
@@ -224,6 +273,46 @@ export default function Dashboard({
                   ))}
                 </Section>
               )}
+
+              {docsExpiringSoon.length > 0 && (
+                <Section title="Documents expiring soon" count={docsExpiringSoon.length} variant="amber" onViewAll={() => onNavigate("documents")}>
+                  {docsExpiringSoon.map(doc => {
+                    const days = Math.ceil((new Date(doc.expiryDate) - now) / 86400000);
+                    return (
+                      <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#fff", borderRadius: 12, border: "1px solid rgba(245,158,11,0.15)" }}>
+                        <span style={{ fontSize: 20 }}>📁</span>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{doc.title}</span>
+                          <p style={{ margin: "2px 0 0", fontSize: 12, color: days < 0 ? "#b91c1c" : "#92400e" }}>
+                            {days < 0 ? `Expired ${Math.abs(days)}d ago` : `Expires in ${days}d`}
+                          </p>
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#9ca3af" }}>{doc.category}</span>
+                      </div>
+                    );
+                  })}
+                </Section>
+              )}
+
+              {warrantyExpiring.length > 0 && (
+                <Section title="Warranties expiring" count={warrantyExpiring.length} variant="amber" onViewAll={() => onNavigate("inventory")}>
+                  {warrantyExpiring.slice(0, 3).map(item => {
+                    const days = Math.ceil((new Date(item.warrantyExpiry) - now) / 86400000);
+                    return (
+                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#fff", borderRadius: 12, border: "1px solid rgba(245,158,11,0.15)" }}>
+                        <span style={{ fontSize: 20 }}>🏷️</span>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{item.name}</span>
+                          <p style={{ margin: "2px 0 0", fontSize: 12, color: days < 0 ? "#b91c1c" : "#92400e" }}>
+                            {days < 0 ? "Warranty expired" : `Expires in ${days}d`}
+                            {item.brand ? ` · ${item.brand}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Section>
+              )}
             </>
           )}
         </div>
@@ -252,39 +341,6 @@ export default function Dashboard({
                   Plan dinner
                 </button>
               </div>
-            )}
-          </div>
-
-          {/* Weather summary */}
-          <div style={{ background: "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 20, padding: 18, boxShadow: "0 4px 16px rgba(22,163,74,0.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#166534" }}>☁️ Weather</h3>
-              <button onClick={() => onNavigate("weather")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Forecast →</button>
-            </div>
-            {weatherData ? (
-              <>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#166534" }}>{Math.round(weatherData.temperature)}°C</p>
-                    <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>Houthalen-Helchteren</p>
-                  </div>
-                  <div style={{ display: "grid", gap: 6, minWidth: 100 }}>
-                    <span style={{ color: "#64748b", fontSize: 12 }}>Wind {Math.round(weatherData.windspeed)} km/h</span>
-                    <span style={{ color: "#64748b", fontSize: 12 }}>Updated {fmtDate(weatherData.time)}</span>
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 8, marginTop: 12 }}>
-                  {weatherHourly.slice(0, 3).map(item => (
-                    <div key={item.time} style={{ background: "#f8fafc", borderRadius: 12, padding: 10, textAlign: "center" }}>
-                      <p style={{ margin: 0, fontSize: 11, color: "#64748b" }}>{new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
-                      <p style={{ margin: "6px 0 0", fontSize: 14, fontWeight: 700, color: "#166534" }}>{Math.round(item.temperature)}°C</p>
-                      <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>{item.precipitationProbability}% rain</p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>Weather data is loading or unavailable.</p>
             )}
           </div>
 

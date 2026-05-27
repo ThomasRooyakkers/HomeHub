@@ -24,14 +24,14 @@ const {
   CALENDAR_FILE,
   PLANTS_FILE,
   USERS_FILE,
+  SETTINGS_FILE,
+  SHOPPING_FILE,
+  DOCUMENTS_FILE,
+  CONTACTS_FILE,
+  INVENTORY_FILE,
   CORS_ORIGIN,
   SESSION_SECRET,
   COOKIE_SECURE,
-  WEATHER_LAT,
-  WEATHER_LON,
-  WEATHER_LOCATION,
-  HUE_BRIDGE_IP,
-  HUE_API_KEY,
 } = config;
 
 const app = express();
@@ -56,7 +56,7 @@ const resolvedSecret = SESSION_SECRET || (() => {
 })();
 
 app.use(session({
-  store: new FileStore({ path: path.join(config.DATA_DIR, "sessions"), ttl: 7 * 24 * 60 * 60, retries: 1 }),
+  store: new FileStore({ path: path.join(config.DATA_DIR, "sessions"), ttl: 90 * 24 * 60 * 60, retries: 1 }),
   secret: resolvedSecret,
   resave: false,
   saveUninitialized: false,
@@ -64,7 +64,7 @@ app.use(session({
     httpOnly: true,
     secure: COOKIE_SECURE,
     sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 90 * 24 * 60 * 60 * 1000,
   },
 }));
 
@@ -86,19 +86,11 @@ const ocrLimiter = rateLimit({
   message: { error: { code: 429, message: "Too many OCR requests, please wait." } },
 });
 
-const weatherLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: { code: 429, message: "Too many weather requests, please wait." } },
-});
-
 app.use("/api", globalLimiter);
 
 // ── Global auth guard ─────────────────────────────────────────────────────────
 
-const PUBLIC_API_PATHS = new Set(["/ping", "/health", "/weather", "/auth/login", "/auth/logout"]);
+const PUBLIC_API_PATHS = new Set(["/ping", "/health", "/auth/login", "/auth/logout"]);
 
 app.use("/api", (req, res, next) => {
   if (PUBLIC_API_PATHS.has(req.path)) return next();
@@ -145,6 +137,15 @@ const saveFile = (filePath, data) => {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 };
 
+// ── SSE broadcast ─────────────────────────────────────────────────────────────
+
+const clients = new Set();
+
+const broadcast = (resource) => {
+  const msg = `data: ${JSON.stringify({ resource })}\n\n`;
+  for (const res of clients) { try { res.write(msg); } catch {} }
+};
+
 const parsePayload = (req) => {
   if (req.body && typeof req.body === "object") {
     if (req.body.data) {
@@ -157,6 +158,18 @@ const parsePayload = (req) => {
 
 const nextId = (items) => items.reduce((max, item) => Math.max(max, item.id || 0), 0) + 1;
 
+// ── SSE endpoint ─────────────────────────────────────────────────────────────
+
+app.get("/api/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  clients.add(res);
+  const hb = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 25000);
+  req.on("close", () => { clients.delete(res); clearInterval(hb); });
+});
+
 // ── User seeding ──────────────────────────────────────────────────────────────
 
 const seedUsers = () => {
@@ -164,10 +177,19 @@ const seedUsers = () => {
   const users = safeLoad(USERS_FILE, []);
   if (users.length > 0) return;
   const passwordHash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12);
-  saveFile(USERS_FILE, [{ id: crypto.randomUUID(), username: process.env.ADMIN_USERNAME, passwordHash }]);
+  saveFile(USERS_FILE, [{ id: crypto.randomUUID(), username: process.env.ADMIN_USERNAME, passwordHash, role: "admin" }]);
   console.log(`[auth] Created initial user "${process.env.ADMIN_USERNAME}"`);
 };
 seedUsers();
+
+const requireAdmin = (req, res, next) => {
+  const users = safeLoad(USERS_FILE, []);
+  const u = users.find(u => u.id === req.session?.userId);
+  if (u?.role !== "admin") return res.status(403).json({ error: { code: 403, message: "Admin only" } });
+  next();
+};
+
+const SAMPLE_SETTINGS = { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a" };
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
 
@@ -189,7 +211,8 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
   }
   req.session.userId = user.id;
   req.session.username = user.username;
-  res.json({ id: user.id, username: user.username });
+  req.session.role = user.role || "user";
+  res.json({ id: user.id, username: user.username, role: user.role || "user" });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -197,7 +220,7 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 app.get("/api/auth/me", (req, res) => {
-  res.json({ id: req.session.userId, username: req.session.username });
+  res.json({ id: req.session.userId, username: req.session.username, role: req.session.role || "user" });
 });
 
 const generateInvoiceNo = (invoices) => {
@@ -287,37 +310,6 @@ app.get("/api/health", (_, res) => {
 
 app.get("/api/ping", (_, res) => res.json({ ok: true }));
 
-// ── Weather ───────────────────────────────────────────────────────────────────
-
-app.get("/api/weather", weatherLimiter, async (_, res, next) => {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=auto`;
-  try {
-    const payload = await fetchJson(url);
-    const now = new Date();
-    const hourly = (payload.hourly?.time || []).map((time, index) => ({
-      time,
-      temperature: payload.hourly.temperature_2m?.[index],
-      precipitationProbability: payload.hourly.precipitation_probability?.[index],
-      weathercode: payload.hourly.weathercode?.[index],
-      windspeed: payload.hourly.windspeed_10m?.[index],
-    })).filter(item => new Date(item.time) >= now).slice(0, 24);
-
-    res.json({
-      location: WEATHER_LOCATION,
-      current: {
-        temperature: payload.current_weather?.temperature,
-        windspeed: payload.current_weather?.windspeed,
-        weathercode: payload.current_weather?.weathercode,
-        time: payload.current_weather?.time,
-      },
-      hourly,
-      updatedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    next(Object.assign(error, { status: 502 }));
-  }
-});
-
 // ── OCR (4.3) ─────────────────────────────────────────────────────────────────
 
 app.post("/api/ocr", ocrLimiter, memUpload.single("file"), async (req, res, next) => {
@@ -353,6 +345,7 @@ app.post("/api/invoices", diskUpload.single("file"), (req, res, next) => {
     };
     invoices.push(invoice);
     saveFile(INVOICES_FILE, invoices);
+    broadcast("invoices");
     res.json(invoice);
   } catch (err) {
     next(err);
@@ -377,6 +370,7 @@ app.put("/api/invoices/:id", diskUpload.single("file"), (req, res, next) => {
         : payload.file ?? invoices[idx].file ?? null,
     };
     saveFile(INVOICES_FILE, invoices);
+    broadcast("invoices");
     res.json(invoices[idx]);
   } catch (err) {
     next(err);
@@ -387,6 +381,7 @@ app.delete("/api/invoices/:id", (req, res, next) => {
   try {
     const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
     saveFile(INVOICES_FILE, invoices.filter(item => item.id !== parseInt(req.params.id, 10)));
+    broadcast("invoices");
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -410,6 +405,7 @@ app.post("/api/recipes", diskUpload.single("image"), (req, res, next) => {
     };
     recipes.push(recipe);
     saveFile(RECIPES_FILE, recipes);
+    broadcast("recipes");
     res.json(recipe);
   } catch (err) {
     next(err);
@@ -432,6 +428,7 @@ app.put("/api/recipes/:id", diskUpload.single("image"), (req, res, next) => {
       image: req.file ? `/uploads/${req.file.filename}` : payload.image ?? recipes[idx].image ?? null,
     };
     saveFile(RECIPES_FILE, recipes);
+    broadcast("recipes");
     res.json(recipes[idx]);
   } catch (err) {
     next(err);
@@ -442,6 +439,7 @@ app.delete("/api/recipes/:id", (req, res, next) => {
   try {
     const recipes = safeLoad(RECIPES_FILE, SAMPLE_RECIPES);
     saveFile(RECIPES_FILE, recipes.filter(item => item.id !== parseInt(req.params.id, 10)));
+    broadcast("recipes");
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -456,6 +454,7 @@ app.put("/api/meal-plan", (req, res, next) => {
   try {
     const payload = parsePayload(req);
     saveFile(MEALPLAN_FILE, payload || {});
+    broadcast("mealPlan");
     res.json(payload || {});
   } catch (err) {
     next(err);
@@ -479,6 +478,7 @@ app.post("/api/maintenance", diskUpload.single("photo"), (req, res, next) => {
     };
     maintenance.push(task);
     saveFile(MAINTENANCE_FILE, maintenance);
+    broadcast("maintenance");
     res.json(task);
   } catch (err) {
     next(err);
@@ -501,6 +501,7 @@ app.put("/api/maintenance/:id", diskUpload.single("photo"), (req, res, next) => 
       photo: req.file ? `/uploads/${req.file.filename}` : payload.photo ?? maintenance[idx].photo ?? null,
     };
     saveFile(MAINTENANCE_FILE, maintenance);
+    broadcast("maintenance");
     res.json(maintenance[idx]);
   } catch (err) {
     next(err);
@@ -511,6 +512,7 @@ app.delete("/api/maintenance/:id", (req, res, next) => {
   try {
     const maintenance = safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE);
     saveFile(MAINTENANCE_FILE, maintenance.filter(item => item.id !== parseInt(req.params.id, 10)));
+    broadcast("maintenance");
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -529,6 +531,7 @@ app.post("/api/plants", (req, res, next) => {
     const plant = { ...payload, id: nextId(plants) };
     plants.push(plant);
     saveFile(PLANTS_FILE, plants);
+    broadcast("plants");
     res.json(plant);
   } catch (err) { next(err); }
 });
@@ -543,6 +546,7 @@ app.put("/api/plants/:id", (req, res, next) => {
     validatePlant(payload);
     plants[idx] = { ...plants[idx], ...payload, id };
     saveFile(PLANTS_FILE, plants);
+    broadcast("plants");
     res.json(plants[idx]);
   } catch (err) { next(err); }
 });
@@ -551,6 +555,7 @@ app.delete("/api/plants/:id", (req, res, next) => {
   try {
     const plants = safeLoad(PLANTS_FILE, SAMPLE_PLANTS);
     saveFile(PLANTS_FILE, plants.filter(item => item.id !== parseInt(req.params.id, 10)));
+    broadcast("plants");
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -564,6 +569,7 @@ app.put("/api/calendar", (req, res, next) => {
     const payload = parsePayload(req);
     const data = { providers: payload.providers || [], events: payload.events || [] };
     saveFile(CALENDAR_FILE, data);
+    broadcast("calendar");
     res.json(data);
   } catch (err) {
     next(err);
@@ -579,6 +585,7 @@ app.delete("/api/calendar/providers/:id", (req, res, next) => {
       events: calendar.events.filter(e => e.calendarId !== calId),
     };
     saveFile(CALENDAR_FILE, data);
+    broadcast("calendar");
     res.json(data);
   } catch (err) {
     next(err);
@@ -662,80 +669,337 @@ app.post("/api/calendar-import", async (req, res, next) => {
   }
 });
 
-// ── Philips Hue ───────────────────────────────────────────────────────────────
+// ── Settings ──────────────────────────────────────────────────────────────────
 
-const hue = require("./services/hue");
+app.get("/api/settings", (_, res) => res.json(safeLoad(SETTINGS_FILE, SAMPLE_SETTINGS)));
 
-const HUE_STATE_KEYS = new Set(["on", "bri", "hue", "sat", "ct", "xy", "transitiontime", "effect", "alert"]);
-const HUE_ACTION_KEYS = new Set(["on", "bri", "hue", "sat", "ct", "xy", "transitiontime", "effect", "alert", "scene"]);
-
-const filterHuePayload = (body, allowedKeys) => {
-  const filtered = {};
-  for (const key of allowedKeys) {
-    if (key in body) filtered[key] = body[key];
-  }
-  return filtered;
-};
-
-const requireHue = (req, res, next) => {
-  if (!HUE_BRIDGE_IP || !HUE_API_KEY) {
-    return res.status(503).json({ error: { code: 503, message: "Hue not configured. Set HUE_BRIDGE_IP and HUE_API_KEY." } });
-  }
-  next();
-};
-
-app.get("/api/hue/lights", requireHue, async (req, res, next) => {
+app.put("/api/settings", requireAdmin, (req, res, next) => {
   try {
-    const lights = await hue.getLights(HUE_BRIDGE_IP, HUE_API_KEY);
-    res.json(lights);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
+    const current = safeLoad(SETTINGS_FILE, SAMPLE_SETTINGS);
+    const { appName, householdName, currency, accentColor } = parsePayload(req);
+    const updated = {
+      ...current,
+      ...(appName !== undefined && { appName: String(appName).trim() || current.appName }),
+      ...(householdName !== undefined && { householdName: String(householdName).trim() }),
+      ...(currency !== undefined && { currency: String(currency) }),
+      ...(accentColor !== undefined && { accentColor: String(accentColor) }),
+    };
+    saveFile(SETTINGS_FILE, updated);
+    broadcast("settings");
+    res.json(updated);
+  } catch (err) { next(err); }
 });
 
-app.get("/api/hue/groups", requireHue, async (req, res, next) => {
-  try {
-    const groups = await hue.getGroups(HUE_BRIDGE_IP, HUE_API_KEY);
-    res.json(groups);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+app.get("/api/admin/users", requireAdmin, (_, res) => {
+  const users = safeLoad(USERS_FILE, []);
+  res.json(users.map(({ passwordHash: _, ...u }) => u));
 });
 
-app.put("/api/hue/lights/:id/state", requireHue, async (req, res, next) => {
+app.post("/api/admin/users", requireAdmin, async (req, res, next) => {
   try {
-    const result = await hue.setLightState(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, filterHuePayload(req.body, HUE_STATE_KEYS));
-    res.json(result);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
+    const { username, password, role = "user" } = parsePayload(req);
+    if (!username || !password) return res.status(400).json({ error: { code: 400, message: "username and password required" } });
+    const users = safeLoad(USERS_FILE, []);
+    if (users.find(u => u.username === username)) return res.status(409).json({ error: { code: 409, message: "Username already exists" } });
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = { id: crypto.randomUUID(), username, passwordHash, role: ["admin", "user"].includes(role) ? role : "user" };
+    users.push(user);
+    saveFile(USERS_FILE, users);
+    const { passwordHash: _, ...safe } = user;
+    res.json(safe);
+  } catch (err) { next(err); }
 });
 
-app.put("/api/hue/groups/:id/action", requireHue, async (req, res, next) => {
+app.put("/api/admin/users/:id/password", requireAdmin, async (req, res, next) => {
   try {
-    const result = await hue.setGroupAction(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, filterHuePayload(req.body, HUE_ACTION_KEYS));
-    res.json(result);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
+    const { password } = parsePayload(req);
+    if (!password) return res.status(400).json({ error: { code: 400, message: "password required" } });
+    const users = safeLoad(USERS_FILE, []);
+    const idx = users.findIndex(u => u.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "User not found" } });
+    users[idx].passwordHash = await bcrypt.hash(password, 12);
+    saveFile(USERS_FILE, users);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
-app.get("/api/hue/scenes", requireHue, async (req, res, next) => {
+app.delete("/api/admin/users/:id", requireAdmin, (req, res, next) => {
   try {
-    const scenes = await hue.getScenes(HUE_BRIDGE_IP, HUE_API_KEY);
-    res.json(scenes);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
+    if (req.params.id === req.session.userId) return res.status(400).json({ error: { code: 400, message: "Cannot delete your own account" } });
+    const users = safeLoad(USERS_FILE, []);
+    if (!users.find(u => u.id === req.params.id)) return res.status(404).json({ error: { code: 404, message: "User not found" } });
+    saveFile(USERS_FILE, users.filter(u => u.id !== req.params.id));
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
-app.put("/api/hue/groups/:id/scene", requireHue, async (req, res, next) => {
+app.get("/api/admin/stats", requireAdmin, (_, res) => {
   try {
-    const result = await hue.activateScene(HUE_BRIDGE_IP, HUE_API_KEY, req.params.id, req.body.scene);
-    res.json(result);
-  } catch (err) {
-    next(Object.assign(err, { status: 502 }));
-  }
+    const uploadsDir = UPLOADS_DIR;
+    let uploadsBytes = 0;
+    try {
+      const files = fs.readdirSync(uploadsDir);
+      for (const f of files) {
+        try { uploadsBytes += fs.statSync(path.join(uploadsDir, f)).size; } catch {}
+      }
+    } catch {}
+    res.json({
+      storage: { uploadsBytes },
+      counts: {
+        invoices:    safeLoad(INVOICES_FILE,   []).length,
+        recipes:     safeLoad(RECIPES_FILE,    []).length,
+        maintenance: safeLoad(MAINTENANCE_FILE,[]).length,
+        plants:      safeLoad(PLANTS_FILE,     []).length,
+        contacts:    safeLoad(CONTACTS_FILE,   []).length,
+        inventory:   safeLoad(INVENTORY_FILE,  []).length,
+        documents:   safeLoad(DOCUMENTS_FILE,  []).length,
+        users:       safeLoad(USERS_FILE,      []).length,
+      },
+    });
+  } catch (err) { res.status(500).json({ error: { code: 500, message: err.message } }); }
+});
+
+// ── Shopping ──────────────────────────────────────────────────────────────────
+
+const SAMPLE_SHOPPING = { stores: [], items: [] };
+const nextShoppingId = (arr) => arr.reduce((m, i) => Math.max(m, i.id || 0), 0) + 1;
+
+app.get("/api/shopping", (_, res) => res.json(safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING)));
+
+app.post("/api/shopping/stores", (req, res, next) => {
+  try {
+    const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
+    const { id: _id, ...payload } = parsePayload(req);
+    if (!payload.name) return res.status(400).json({ error: { code: 400, message: "name required" } });
+    const store = { ...payload, id: nextShoppingId(data.stores) };
+    data.stores.push(store);
+    saveFile(SHOPPING_FILE, data);
+    broadcast("shopping");
+    res.json(store);
+  } catch (err) { next(err); }
+});
+
+app.put("/api/shopping/stores/:id", (req, res, next) => {
+  try {
+    const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
+    const id = parseInt(req.params.id, 10);
+    const idx = data.stores.findIndex(s => s.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Store not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    data.stores[idx] = { ...data.stores[idx], ...payload, id };
+    saveFile(SHOPPING_FILE, data);
+    broadcast("shopping");
+    res.json(data.stores[idx]);
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/shopping/stores/:id", (req, res, next) => {
+  try {
+    const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
+    const id = parseInt(req.params.id, 10);
+    data.stores = data.stores.filter(s => s.id !== id);
+    data.items = data.items.filter(i => i.storeId !== id);
+    saveFile(SHOPPING_FILE, data);
+    broadcast("shopping");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/shopping/items", (req, res, next) => {
+  try {
+    const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
+    const { id: _id, ...payload } = parsePayload(req);
+    if (!payload.name) return res.status(400).json({ error: { code: 400, message: "name required" } });
+    const item = { ...payload, id: nextShoppingId(data.items), checked: false };
+    data.items.push(item);
+    saveFile(SHOPPING_FILE, data);
+    broadcast("shopping");
+    res.json(item);
+  } catch (err) { next(err); }
+});
+
+app.put("/api/shopping/items/:id", (req, res, next) => {
+  try {
+    const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
+    const id = parseInt(req.params.id, 10);
+    const idx = data.items.findIndex(i => i.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Item not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    data.items[idx] = { ...data.items[idx], ...payload, id };
+    saveFile(SHOPPING_FILE, data);
+    broadcast("shopping");
+    res.json(data.items[idx]);
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/shopping/items/:id", (req, res, next) => {
+  try {
+    const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
+    data.items = data.items.filter(i => i.id !== parseInt(req.params.id, 10));
+    saveFile(SHOPPING_FILE, data);
+    broadcast("shopping");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/shopping/items/checked", (req, res, next) => {
+  try {
+    const { storeId } = req.query;
+    const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
+    data.items = data.items.filter(i => !i.checked || (storeId && i.storeId !== parseInt(storeId, 10)));
+    saveFile(SHOPPING_FILE, data);
+    broadcast("shopping");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── Documents ─────────────────────────────────────────────────────────────────
+
+app.get("/api/documents", (_, res) => res.json(safeLoad(DOCUMENTS_FILE, [])));
+
+app.post("/api/documents", diskUpload.single("file"), (req, res, next) => {
+  try {
+    if (req.file) validateMagicBytes(req.file);
+    const docs = safeLoad(DOCUMENTS_FILE, []);
+    const { id: _id, ...payload } = parsePayload(req);
+    const doc = {
+      ...payload,
+      id: nextId(docs),
+      uploadedAt: new Date().toISOString().slice(0, 10),
+      file: req.file ? req.file.filename : null,
+      originalName: req.file ? sanitizeFilename(req.file.originalname) : null,
+    };
+    docs.push(doc);
+    saveFile(DOCUMENTS_FILE, docs);
+    broadcast("documents");
+    res.json(doc);
+  } catch (err) { next(err); }
+});
+
+app.put("/api/documents/:id", diskUpload.single("file"), (req, res, next) => {
+  try {
+    if (req.file) validateMagicBytes(req.file);
+    const docs = safeLoad(DOCUMENTS_FILE, []);
+    const id = parseInt(req.params.id, 10);
+    const idx = docs.findIndex(d => d.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Document not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    if (req.file && docs[idx].file) {
+      try { fs.unlinkSync(path.join(UPLOADS_DIR, docs[idx].file)); } catch {}
+    }
+    docs[idx] = {
+      ...docs[idx],
+      ...payload,
+      id,
+      ...(req.file && { file: req.file.filename, originalName: sanitizeFilename(req.file.originalname) }),
+    };
+    saveFile(DOCUMENTS_FILE, docs);
+    broadcast("documents");
+    res.json(docs[idx]);
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/documents/:id", (req, res, next) => {
+  try {
+    const docs = safeLoad(DOCUMENTS_FILE, []);
+    const doc = docs.find(d => d.id === parseInt(req.params.id, 10));
+    if (doc?.file) { try { fs.unlinkSync(path.join(UPLOADS_DIR, doc.file)); } catch {} }
+    saveFile(DOCUMENTS_FILE, docs.filter(d => d.id !== parseInt(req.params.id, 10)));
+    broadcast("documents");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+
+app.get("/api/contacts", (_, res) => res.json(safeLoad(CONTACTS_FILE, [])));
+
+app.post("/api/contacts", (req, res, next) => {
+  try {
+    const contacts = safeLoad(CONTACTS_FILE, []);
+    const { id: _id, ...payload } = parsePayload(req);
+    if (!payload.name) return res.status(400).json({ error: { code: 400, message: "name required" } });
+    const contact = { ...payload, id: nextId(contacts) };
+    contacts.push(contact);
+    saveFile(CONTACTS_FILE, contacts);
+    broadcast("contacts");
+    res.json(contact);
+  } catch (err) { next(err); }
+});
+
+app.put("/api/contacts/:id", (req, res, next) => {
+  try {
+    const contacts = safeLoad(CONTACTS_FILE, []);
+    const id = parseInt(req.params.id, 10);
+    const idx = contacts.findIndex(c => c.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Contact not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    contacts[idx] = { ...contacts[idx], ...payload, id };
+    saveFile(CONTACTS_FILE, contacts);
+    broadcast("contacts");
+    res.json(contacts[idx]);
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/contacts/:id", (req, res, next) => {
+  try {
+    const contacts = safeLoad(CONTACTS_FILE, []);
+    saveFile(CONTACTS_FILE, contacts.filter(c => c.id !== parseInt(req.params.id, 10)));
+    broadcast("contacts");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+
+app.get("/api/inventory", (_, res) => res.json(safeLoad(INVENTORY_FILE, [])));
+
+app.post("/api/inventory", diskUpload.single("photo"), (req, res, next) => {
+  try {
+    if (req.file) validateMagicBytes(req.file);
+    const items = safeLoad(INVENTORY_FILE, []);
+    const { id: _id, ...payload } = parsePayload(req);
+    const item = {
+      ...payload,
+      id: nextId(items),
+      photo: req.file ? `/uploads/${req.file.filename}` : payload.photo || null,
+    };
+    items.push(item);
+    saveFile(INVENTORY_FILE, items);
+    broadcast("inventory");
+    res.json(item);
+  } catch (err) { next(err); }
+});
+
+app.put("/api/inventory/:id", diskUpload.single("photo"), (req, res, next) => {
+  try {
+    if (req.file) validateMagicBytes(req.file);
+    const items = safeLoad(INVENTORY_FILE, []);
+    const id = parseInt(req.params.id, 10);
+    const idx = items.findIndex(i => i.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Item not found" } });
+    const { id: _id, ...payload } = parsePayload(req);
+    items[idx] = {
+      ...items[idx],
+      ...payload,
+      id,
+      photo: req.file ? `/uploads/${req.file.filename}` : payload.photo ?? items[idx].photo ?? null,
+    };
+    saveFile(INVENTORY_FILE, items);
+    broadcast("inventory");
+    res.json(items[idx]);
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/inventory/:id", (req, res, next) => {
+  try {
+    const items = safeLoad(INVENTORY_FILE, []);
+    saveFile(INVENTORY_FILE, items.filter(i => i.id !== parseInt(req.params.id, 10)));
+    broadcast("inventory");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 // ── Centralized error handler (must be last) ──────────────────────────────────
