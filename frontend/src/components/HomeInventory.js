@@ -1,21 +1,10 @@
 import { useState, useRef } from "react";
 import { apiFetch } from "../lib/api";
 
-const labelStyle = { fontSize: 14, color: "#4b5563", display: "block", marginBottom: 6, fontWeight: 600 };
-const inputStyle = {
-  width: "100%", background: "rgba(255,255,255,0.95)", border: "1px solid rgba(0,0,0,0.12)",
-  borderRadius: 12, padding: "11px 14px", fontSize: 15, fontFamily: "inherit", color: "#111827",
-};
-const btnPrimary = {
-  padding: "10px 20px", background: "linear-gradient(135deg, var(--accent, #16a34a), #22c55e)",
-  color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14,
-  cursor: "pointer", fontFamily: "inherit",
-};
-const btnSecondary = {
-  padding: "10px 20px", background: "#f1f5f9", color: "#374151",
-  border: "1px solid #e5e7eb", borderRadius: 12, fontWeight: 600, fontSize: 14,
-  cursor: "pointer", fontFamily: "inherit",
-};
+const labelStyle = { fontSize: 12, color: "var(--g-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" };
+const inputStyle = { width: "100%", background: "#fff", border: "1px solid var(--g-hair)", borderRadius: 12, padding: "11px 14px", fontSize: 14, fontFamily: "inherit", color: "var(--g-ink)", boxSizing: "border-box" };
+const btnPrimary = { padding: "10px 20px", background: "var(--g-sage)", color: "#fff", border: "none", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" };
+const btnSecondary = { padding: "10px 20px", background: "var(--g-bg)", color: "var(--g-ink2)", border: "1px solid var(--g-hair)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" };
 
 const getDaysUntil = (dateStr) => {
   if (!dateStr) return null;
@@ -25,10 +14,10 @@ const getDaysUntil = (dateStr) => {
 const warrantyBadge = (dateStr) => {
   const days = getDaysUntil(dateStr);
   if (days === null) return null;
-  if (days < 0) return { label: "Expired", bg: "#fef2f2", color: "#dc2626", ring: "#fca5a5" };
-  if (days <= 30) return { label: `${days}d left`, bg: "#fef2f2", color: "#dc2626", ring: "#fca5a5" };
-  if (days <= 90) return { label: `${days}d left`, bg: "#fffbeb", color: "#d97706", ring: "#fcd34d" };
-  return { label: `${Math.round(days / 30)}mo left`, bg: "#f0fdf4", color: "#16a34a", ring: "#86efac" };
+  if (days < 0) return { label: "Expired", bg: "var(--g-brick-bg)", color: "var(--g-brick)" };
+  if (days <= 30) return { label: `${days}d left`, bg: "var(--g-brick-bg)", color: "var(--g-brick)" };
+  if (days <= 90) return { label: `${days}d left`, bg: "var(--g-honey-bg)", color: "var(--g-honey)" };
+  return { label: `${Math.round(days / 30)}mo left`, bg: "var(--g-sage-bg)", color: "var(--g-sage-dark)" };
 };
 
 const EMPTY_FORM = { name: "", brand: "", model: "", serialNo: "", purchaseDate: "", warrantyExpiry: "", value: "", location: "", notes: "" };
@@ -118,91 +107,103 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
     return d !== null && d <= 90;
   }).length;
 
+  const totalValue = inventory.reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "28px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h2 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#111827" }}>🏷️ Home Inventory</h2>
-        <button style={btnPrimary} onClick={openNew}>+ Add Item</button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--g-sage)", textTransform: "uppercase", letterSpacing: "0.1em" }}>What we own</p>
+          <h1 style={{ margin: "4px 0 0", fontSize: 44, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)", lineHeight: 1 }}>Inventory</h1>
+        </div>
+        <button style={btnPrimary} onClick={openNew}>+ Add item</button>
       </div>
 
-      {expiringCount > 0 && (
-        <div style={{ marginBottom: 20, padding: "12px 18px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 14, color: "#92400e", fontSize: 14, fontWeight: 600 }}>
-          ⚠️ {expiringCount} item{expiringCount > 1 ? "s" : ""} with warranty expiring within 90 days
-        </div>
-      )}
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
+        {[
+          { label: "Items tracked", value: inventory.length, accent: "var(--g-sage)" },
+          { label: "Estimated value", value: `€${totalValue.toLocaleString("nl-BE", { minimumFractionDigits: 0 })}`, accent: "var(--g-honey)" },
+          { label: "Warranty alerts", value: expiringCount, accent: expiringCount > 0 ? "var(--g-brick)" : "var(--g-sage)" },
+        ].map(s => (
+          <div key={s.label} style={{ background: "var(--g-card)", borderRadius: 20, padding: "20px 22px", boxShadow: "var(--g-shadow)" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--g-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{s.label}</div>
+            <div style={{ fontSize: 28, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)", lineHeight: 1 }}>{s.value}</div>
+            <div style={{ height: 3, width: 28, background: s.accent, borderRadius: 2, marginTop: 10 }} />
+          </div>
+        ))}
+      </div>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-        <input
-          style={{ ...inputStyle, flex: "1 1 200px", maxWidth: 280 }}
-          placeholder="Search items…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <svg style={{ position: "absolute", left: 12, color: "var(--g-mute2)", pointerEvents: "none" }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input
+            style={{ ...inputStyle, paddingLeft: 32, maxWidth: 240 }}
+            placeholder="Search items…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {locations.map(loc => (
-            <button
-              key={loc}
-              onClick={() => setLocationFilter(loc)}
-              style={{
-                padding: "8px 16px", borderRadius: 20, border: "none", cursor: "pointer",
-                fontFamily: "inherit", fontWeight: 600, fontSize: 13,
-                background: locationFilter === loc ? "var(--accent, #16a34a)" : "#f1f5f9",
-                color: locationFilter === loc ? "#fff" : "#374151",
-              }}
-            >{loc}</button>
+            <button key={loc} onClick={() => setLocationFilter(loc)} style={{
+              all: "unset", cursor: "pointer",
+              padding: "7px 14px", borderRadius: 999,
+              fontFamily: "var(--g-sans)", fontWeight: 600, fontSize: 13,
+              background: locationFilter === loc ? "var(--g-sage-bg)" : "var(--g-card)",
+              color: locationFilter === loc ? "var(--g-sage-dark)" : "var(--g-ink2)",
+              border: `1px solid ${locationFilter === loc ? "transparent" : "var(--g-hair)"}`,
+              boxShadow: "var(--g-shadow-sm)",
+            }}>{loc}</button>
           ))}
         </div>
       </div>
 
       {/* Table */}
       {sorted.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🏷️</div>
-          <p style={{ margin: 0 }}>No items yet. Start tracking your appliances and valuables.</p>
+        <div style={{ background: "var(--g-card)", borderRadius: 20, padding: "60px 40px", boxShadow: "var(--g-shadow)", textAlign: "center", color: "var(--g-muted)" }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--g-mute2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 16 }}><path d="M3 12V4h8l10 10-8 8z"/><circle cx="8" cy="8" r="1.5"/></svg>
+          <p style={{ margin: 0, fontSize: 15 }}>No items yet. Start tracking your appliances and valuables.</p>
         </div>
       ) : (
-        <div style={{ background: "rgba(255,255,255,0.85)", borderRadius: 20, border: "1px solid rgba(0,0,0,0.06)", overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
-                {["Item", "Brand / Model", "Location", "Value", "Warranty", ""].map(h => (
-                  <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((item, idx) => {
-                const badge = warrantyBadge(item.warrantyExpiry);
-                return (
-                  <tr key={item.id} style={{ borderBottom: idx < sorted.length - 1 ? "1px solid #f9fafb" : "none", background: idx % 2 === 0 ? "transparent" : "rgba(248,250,252,0.5)" }}>
-                    <td style={{ padding: "14px 16px" }}>
-                      <div style={{ fontWeight: 700, color: "#111827" }}>{item.name}</div>
-                      {item.serialNo && <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>S/N: {item.serialNo}</div>}
-                    </td>
-                    <td style={{ padding: "14px 16px", color: "#6b7280" }}>
-                      {[item.brand, item.model].filter(Boolean).join(" · ") || "—"}
-                    </td>
-                    <td style={{ padding: "14px 16px", color: "#6b7280" }}>{item.location || "—"}</td>
-                    <td style={{ padding: "14px 16px", color: "#374151", fontWeight: 600 }}>
-                      {item.value ? `€${Number(item.value).toLocaleString()}` : "—"}
-                    </td>
-                    <td style={{ padding: "14px 16px" }}>
-                      {badge ? (
-                        <span style={{ padding: "4px 10px", borderRadius: 8, background: badge.bg, color: badge.color, fontSize: 12, fontWeight: 700, border: `1px solid ${badge.ring}` }}>{badge.label}</span>
-                      ) : "—"}
-                    </td>
-                    <td style={{ padding: "14px 16px" }}>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button onClick={() => openEdit(item)} style={{ padding: "5px 12px", background: "#f1f5f9", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
-                        <button onClick={() => setDeleteId(item.id)} style={{ padding: "5px 12px", background: "rgba(252,165,165,0.1)", borderRadius: 8, border: "1px solid rgba(220,38,38,0.2)", fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer", fontFamily: "inherit" }}>Del</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ background: "var(--g-card)", borderRadius: 20, boxShadow: "var(--g-shadow)", overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 120px 100px", gap: 0, padding: "10px 24px", borderBottom: "1px solid var(--g-hair)" }}>
+            {["Item", "Brand · Model", "Location", "Value", "Warranty", ""].map(h => (
+              <div key={h} style={{ fontSize: 11, fontWeight: 600, color: "var(--g-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
+            ))}
+          </div>
+          {sorted.map((item, idx) => {
+            const badge = warrantyBadge(item.warrantyExpiry);
+            return (
+              <div key={item.id} style={{
+                display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 120px 100px",
+                gap: 0, padding: "14px 24px",
+                borderTop: idx > 0 ? "1px solid var(--g-hair2)" : "none",
+                alignItems: "center",
+              }}>
+                <div>
+                  <div style={{ fontWeight: 600, color: "var(--g-ink)", fontSize: 14, fontFamily: "var(--g-sans)" }}>{item.name}</div>
+                  {item.serialNo && <div style={{ fontSize: 11, color: "var(--g-mute2)", marginTop: 2 }}>S/N {item.serialNo}</div>}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--g-ink2)" }}>{[item.brand, item.model].filter(Boolean).join(" · ") || "—"}</div>
+                <div style={{ fontSize: 13, color: "var(--g-ink2)" }}>{item.location || "—"}</div>
+                <div style={{ fontSize: 14, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>
+                  {item.value ? `€${Number(item.value).toLocaleString()}` : "—"}
+                </div>
+                <div>
+                  {badge ? (
+                    <span style={{ display: "inline-block", padding: "4px 9px", borderRadius: 999, background: badge.bg, color: badge.color, fontSize: 11.5, fontWeight: 600 }}>{badge.label}</span>
+                  ) : <span style={{ color: "var(--g-mute2)", fontSize: 13 }}>—</span>}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => openEdit(item)} style={{ all: "unset", cursor: "pointer", padding: "5px 11px", background: "var(--g-bg)", borderRadius: 8, border: "1px solid var(--g-hair)", fontSize: 12, fontWeight: 600, color: "var(--g-ink2)" }}>Edit</button>
+                  <button onClick={() => setDeleteId(item.id)} style={{ all: "unset", cursor: "pointer", padding: "5px 11px", background: "var(--g-brick-bg)", borderRadius: 8, border: "1px solid transparent", fontSize: 12, fontWeight: 600, color: "var(--g-brick)" }}>Del</button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -210,7 +211,7 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
       {form && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && closeModal()}>
           <div className="modal-box" style={{ maxWidth: 520 }}>
-            <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 700 }}>{form.id ? "Edit Item" : "Add Item"}</h3>
+            <h3 style={{ margin: "0 0 20px", fontSize: 24, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>{form.id ? "Edit item" : "Add item"}</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Name *</label>
@@ -225,7 +226,7 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
                 <input style={inputStyle} value={form.model || ""} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="e.g. W1" />
               </div>
               <div>
-                <label style={labelStyle}>Serial Number</label>
+                <label style={labelStyle}>Serial number</label>
                 <input style={inputStyle} value={form.serialNo || ""} onChange={e => setForm(f => ({ ...f, serialNo: e.target.value }))} />
               </div>
               <div>
@@ -233,11 +234,11 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
                 <input style={inputStyle} value={form.location || ""} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="e.g. Kitchen" />
               </div>
               <div>
-                <label style={labelStyle}>Purchase Date</label>
+                <label style={labelStyle}>Purchase date</label>
                 <input type="date" style={inputStyle} value={form.purchaseDate || ""} onChange={e => setForm(f => ({ ...f, purchaseDate: e.target.value }))} />
               </div>
               <div>
-                <label style={labelStyle}>Warranty Expires</label>
+                <label style={labelStyle}>Warranty expires</label>
                 <input type="date" style={inputStyle} value={form.warrantyExpiry || ""} onChange={e => setForm(f => ({ ...f, warrantyExpiry: e.target.value }))} />
               </div>
               <div>
@@ -249,7 +250,7 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
                 <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp" style={{ display: "none" }} onChange={handlePhoto} />
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button type="button" style={{ ...btnSecondary, padding: "8px 14px", fontSize: 13 }} onClick={() => fileRef.current.click()}>Choose</button>
-                  <span style={{ fontSize: 12, color: "#9ca3af" }}>{photo ? photo.name : (form.photo ? "existing photo" : "none")}</span>
+                  <span style={{ fontSize: 12, color: "var(--g-mute2)" }}>{photo ? photo.name : (form.photo ? "existing photo" : "none")}</span>
                 </div>
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
@@ -269,10 +270,10 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
       {deleteId && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setDeleteId(null)}>
           <div className="modal-box" style={{ maxWidth: 360, textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🗑️</div>
-            <h3 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 700 }}>Delete Item?</h3>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 24 }}>
-              <button onClick={() => confirmDelete(deleteId)} style={{ padding: "10px 20px", background: "rgba(252,165,165,0.12)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+            <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Delete item?</h3>
+            <p style={{ margin: "0 0 24px", color: "var(--g-muted)", fontSize: 14 }}>This cannot be undone.</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button onClick={() => confirmDelete(deleteId)} style={{ ...btnSecondary, background: "var(--g-brick-bg)", color: "var(--g-brick)", borderColor: "transparent" }}>Delete</button>
               <button style={btnSecondary} onClick={() => setDeleteId(null)}>Cancel</button>
             </div>
           </div>

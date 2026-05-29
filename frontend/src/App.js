@@ -14,6 +14,7 @@ import DocumentVault from "./components/DocumentVault";
 import HouseholdContacts from "./components/HouseholdContacts";
 import HomeInventory from "./components/HomeInventory";
 import Admin from "./components/Admin";
+import QuickAddModal from "./components/QuickAddModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
@@ -75,16 +76,17 @@ export default function App() {
   const [documents, setDocuments]           = useState(() => loadLocal("documents", []));
   const [contacts, setContacts]             = useState(() => loadLocal("contacts",  []));
   const [inventory, setInventory]           = useState(() => loadLocal("inventory", []));
-  const [settings, setSettings]             = useState({ appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a" });
+  const [settings, setSettings]             = useState({ appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#5a7a5e" });
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
   const [needsLogin, setNeedsLogin]         = useState(false);
   const [toast, setToast]                   = useState(null);
+  const [quickAddOpen, setQuickAddOpen]     = useState(false);
 
   const applySettings = useCallback((s) => {
     setSettings(s);
-    document.documentElement.style.setProperty("--accent", s.accentColor || "#16a34a");
-    document.documentElement.style.setProperty("--accent-dark", adjustColor(s.accentColor || "#16a34a", -20));
+    document.documentElement.style.setProperty("--accent", s.accentColor || "#5a7a5e");
+    document.documentElement.style.setProperty("--accent-dark", adjustColor(s.accentColor || "#5a7a5e", -20));
     if (s.appName) document.title = s.appName;
   }, []);
 
@@ -305,18 +307,44 @@ export default function App() {
   return (
     <div className="app-root">
       <Toast toast={toast} />
+      {quickAddOpen && (
+        <QuickAddModal
+          onClose={() => setQuickAddOpen(false)}
+          shopping={shopping} setShopping={setShopping}
+          setInvoices={setInvoices}
+          setMaintenance={setMaintenance}
+          setPlants={setPlants}
+          apiEnabled={apiEnabled}
+          showToast={showToast}
+        />
+      )}
       <div className="app-layout">
-        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} settings={settings} />
+        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} settings={settings} onOpenQuickAdd={() => setQuickAddOpen(true)} />
         <main className="app-main">
           {activeTool === "dashboard" && (
             <ErrorBoundary key="dashboard">
               <Dashboard
                 invoices={invoices} mealPlan={mealPlan} recipes={recipes}
                 maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
-                shopping={shopping} documents={documents} contacts={contacts} inventory={inventory}
+                shopping={shopping} plants={plants} currentUser={currentUser}
                 onNavigate={setActiveTool}
                 onToggleInvoicePaid={toggleInvoicePaid}
                 onToggleMaintenanceDone={toggleMaintenanceDone}
+                onWaterPlant={async (id) => {
+                  const plant = plants.find(p => p.id === id);
+                  if (!plant) return;
+                  const updated = { ...plant, lastWatered: new Date().toISOString().slice(0, 10) };
+                  if (apiEnabled) {
+                    try {
+                      const result = await apiFetch(`/api/plants/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated) });
+                      setPlants(prev => prev.map(p => p.id === id ? result : p));
+                      showToast("Watered!");
+                      return;
+                    } catch {}
+                  }
+                  setPlants(prev => prev.map(p => p.id === id ? updated : p));
+                  showToast("Watered!");
+                }}
               />
             </ErrorBoundary>
           )}
