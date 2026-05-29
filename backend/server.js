@@ -90,7 +90,7 @@ app.use("/api", globalLimiter);
 
 // ── Global auth guard ─────────────────────────────────────────────────────────
 
-const PUBLIC_API_PATHS = new Set(["/ping", "/health", "/auth/login", "/auth/logout"]);
+const PUBLIC_API_PATHS = new Set(["/ping", "/health", "/auth/login", "/auth/logout", "/auth/me"]);
 
 app.use("/api", (req, res, next) => {
   if (PUBLIC_API_PATHS.has(req.path)) return next();
