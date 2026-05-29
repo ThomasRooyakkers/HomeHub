@@ -4,27 +4,21 @@ import { apiFetch } from "../lib/api";
 const DEFAULT_CATEGORIES = ["Insurance", "Warranty", "Legal", "Medical", "Financial", "Manuals", "Other"];
 
 const CAT_COLORS = {
-  Insurance: "#3b82f6", Warranty: "#f59e0b", Legal: "#8b5cf6",
-  Medical: "#ec4899", Financial: "#10b981", Manuals: "#6b7280", Other: "#9ca3af",
+  Insurance: "#5d7c95", Warranty: "#b8853e", Legal: "#8b5cf6",
+  Medical: "#a85a3e", Financial: "#5a7a5e", Manuals: "#6b7c73", Other: "#94a39a",
 };
 
-const DEFAULT_CAT_COLOR = "#6b7280";
+const CAT_ICONS = {
+  Insurance: "🛡️", Warranty: "🏷️", Legal: "⚖️",
+  Medical: "🏥", Financial: "💰", Manuals: "📖", Other: "📄",
+};
 
-const labelStyle = { fontSize: 14, color: "#4b5563", display: "block", marginBottom: 6, fontWeight: 600 };
-const inputStyle = {
-  width: "100%", background: "rgba(255,255,255,0.95)", border: "1px solid rgba(0,0,0,0.12)",
-  borderRadius: 12, padding: "11px 14px", fontSize: 15, fontFamily: "inherit", color: "#111827",
-};
-const btnPrimary = {
-  padding: "10px 20px", background: "linear-gradient(135deg, var(--accent, #16a34a), #22c55e)",
-  color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14,
-  cursor: "pointer", fontFamily: "inherit",
-};
-const btnSecondary = {
-  padding: "10px 20px", background: "#f1f5f9", color: "#374151",
-  border: "1px solid #e5e7eb", borderRadius: 12, fontWeight: 600, fontSize: 14,
-  cursor: "pointer", fontFamily: "inherit",
-};
+const DEFAULT_CAT_COLOR = "#6b7c73";
+
+const labelStyle = { fontSize: 12, color: "var(--g-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" };
+const inputStyle = { width: "100%", background: "#fff", border: "1px solid var(--g-hair)", borderRadius: 12, padding: "11px 14px", fontSize: 14, fontFamily: "inherit", color: "var(--g-ink)", boxSizing: "border-box" };
+const btnPrimary = { padding: "10px 20px", background: "var(--g-sage)", color: "#fff", border: "none", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" };
+const btnSecondary = { padding: "10px 20px", background: "var(--g-bg)", color: "var(--g-ink2)", border: "1px solid var(--g-hair)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" };
 
 const getDaysUntil = (dateStr) => {
   if (!dateStr) return null;
@@ -34,10 +28,10 @@ const getDaysUntil = (dateStr) => {
 const expiryBadge = (dateStr) => {
   const days = getDaysUntil(dateStr);
   if (days === null) return null;
-  if (days < 0) return { label: "Expired", color: "#dc2626", bg: "rgba(220,38,38,0.08)" };
-  if (days <= 30) return { label: `Expires in ${days}d`, color: "#dc2626", bg: "rgba(220,38,38,0.08)" };
-  if (days <= 90) return { label: `Expires in ${days}d`, color: "#d97706", bg: "rgba(217,119,6,0.08)" };
-  return { label: dateStr, color: "#6b7280", bg: "rgba(0,0,0,0.04)" };
+  if (days < 0) return { label: "Expired", color: "var(--g-brick)", bg: "var(--g-brick-bg)" };
+  if (days <= 30) return { label: `Expires in ${days}d`, color: "var(--g-brick)", bg: "var(--g-brick-bg)" };
+  if (days <= 90) return { label: `Expires in ${days}d`, color: "var(--g-honey)", bg: "var(--g-honey-bg)" };
+  return { label: dateStr, color: "var(--g-muted)", bg: "var(--g-hair2)" };
 };
 
 const fileIcon = (name) => {
@@ -74,6 +68,7 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
   const allCategories = [...DEFAULT_CATEGORIES, ...customCats.filter(c => !DEFAULT_CATEGORIES.includes(c))];
 
   const getCatColor = (cat) => CAT_COLORS[cat] || DEFAULT_CAT_COLOR;
+  const getCatIcon = (cat) => CAT_ICONS[cat] || "📁";
 
   const visible = catFilter === "All" ? documents : documents.filter(d => d.category === catFilter);
   const sorted = [...visible].sort((a, b) => {
@@ -149,140 +144,123 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#111827" }}>📁 Document Vault</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--g-sage)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Household</p>
+          <h1 style={{ margin: 0, fontSize: 44, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)", lineHeight: 1.1 }}>Document Vault</h1>
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={btnSecondary} onClick={() => setShowCatManager(true)}>Categories</button>
           <button style={btnPrimary} onClick={openNew}>+ Add Document</button>
         </div>
       </div>
 
-      {/* Category filter */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
-        {uniqueFilterCats.map(c => (
-          <button
-            key={c}
-            onClick={() => setCatFilter(c)}
-            style={{
-              padding: "7px 16px", borderRadius: 20, border: "none", cursor: "pointer",
-              fontFamily: "inherit", fontWeight: 600, fontSize: 13,
-              background: catFilter === c ? (getCatColor(c) || "var(--accent, #16a34a)") : "#f1f5f9",
-              color: catFilter === c ? "#fff" : "#374151",
-            }}
-          >{c}</button>
-        ))}
-      </div>
-
-      {/* Cards grid */}
-      {sorted.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📁</div>
-          <p style={{ margin: 0 }}>No documents yet. Click "+ Add Document" to store one.</p>
+      {/* 3-column layout */}
+      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 20, alignItems: "start" }}>
+        {/* Category sidebar */}
+        <div style={{ background: "var(--g-card)", borderRadius: 20, boxShadow: "var(--g-shadow)", overflow: "hidden" }}>
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--g-hair)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--g-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Categories</div>
+          </div>
+          {uniqueFilterCats.map(c => (
+            <button
+              key={c}
+              onClick={() => setCatFilter(c)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                width: "100%", padding: "11px 16px",
+                border: "none", borderBottom: "1px solid var(--g-hair2)",
+                background: catFilter === c ? "var(--g-sage-bg)" : "transparent",
+                color: catFilter === c ? "var(--g-sage-dark)" : "var(--g-ink2)",
+                fontFamily: "inherit", fontWeight: catFilter === c ? 600 : 500, fontSize: 13,
+                cursor: "pointer", textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 16 }}>{c === "All" ? "📁" : getCatIcon(c)}</span>
+              {c}
+            </button>
+          ))}
         </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-          {sorted.map(doc => {
-            const badge = expiryBadge(doc.expiryDate);
-            const catColor = getCatColor(doc.category);
-            return (
-              <div key={doc.id} style={{ background: "rgba(255,255,255,0.88)", borderRadius: 18, border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 2px 12px rgba(15,23,42,0.04)", overflow: "hidden" }}>
-                {/* File preview thumbnail */}
-                {doc.file && (
-                  <div
-                    onClick={() => setPreviewDoc(doc)}
-                    style={{
-                      height: 140, background: "#1e293b", cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      overflow: "hidden", position: "relative",
-                    }}
-                  >
-                    {isImage(doc.originalName) ? (
-                      <img
-                        src={`/uploads/${doc.file}`}
-                        alt={doc.title}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    ) : (
-                      <div style={{ textAlign: "center", color: "#94a3b8" }}>
-                        <div style={{ fontSize: 48, marginBottom: 6 }}>📕</div>
-                        <div style={{ fontSize: 12, fontWeight: 600 }}>Click to preview</div>
+
+        {/* Document list */}
+        <div>
+          {sorted.length === 0 ? (
+            <div style={{ background: "var(--g-card)", borderRadius: 20, padding: "60px 40px", boxShadow: "var(--g-shadow)", textAlign: "center", color: "var(--g-muted)", fontSize: 15 }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📁</div>
+              <p style={{ margin: 0 }}>No documents yet. Click "+ Add Document" to store one.</p>
+            </div>
+          ) : (
+            <div style={{ background: "var(--g-card)", borderRadius: 20, boxShadow: "var(--g-shadow)", overflow: "hidden" }}>
+              {sorted.map((doc, idx) => {
+                const badge = expiryBadge(doc.expiryDate);
+                const catColor = getCatColor(doc.category);
+                return (
+                  <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 24px", borderTop: idx > 0 ? "1px solid var(--g-hair2)" : "none" }}>
+                    {/* Type badge */}
+                    <div style={{ fontSize: 28, flexShrink: 0 }}>{fileIcon(doc.originalName)}</div>
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--g-ink)" }}>{doc.title}</span>
+                        <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, background: catColor + "18", color: catColor }}>{doc.category}</span>
+                        {badge && (
+                          <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, background: badge.bg, color: badge.color }}>{badge.label}</span>
+                        )}
                       </div>
-                    )}
-                    <div style={{
-                      position: "absolute", inset: 0, background: "rgba(0,0,0,0)",
-                      transition: "background 0.15s",
-                    }} className="doc-preview-overlay" />
-                  </div>
-                )}
+                      {doc.originalName && <div style={{ fontSize: 12, color: "var(--g-mute2)" }}>{doc.originalName}</div>}
+                      {doc.notes && <div style={{ fontSize: 12, color: "var(--g-muted)", marginTop: 2 }}>{doc.notes}</div>}
+                    </div>
 
-                <div style={{ padding: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                    <span style={{ fontSize: doc.file ? 22 : 32 }}>{fileIcon(doc.originalName)}</span>
-                    <span style={{ padding: "4px 10px", borderRadius: 8, background: catColor + "18", color: catColor, fontSize: 12, fontWeight: 700 }}>{doc.category}</span>
+                    {/* Actions */}
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      {doc.file && (
+                        <button onClick={() => setPreviewDoc(doc)} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12 }}>Preview</button>
+                      )}
+                      {doc.file && (
+                        <a href={`/uploads/${doc.file}`} download={doc.originalName || doc.file} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12, textDecoration: "none" }}>Download</a>
+                      )}
+                      <button onClick={() => openEdit(doc)} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12 }}>Edit</button>
+                      <button onClick={() => setDeleteId(doc.id)} style={{ padding: "6px 12px", background: "var(--g-brick-bg)", color: "var(--g-brick)", border: "1px solid var(--g-hair)", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+                    </div>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111827", marginBottom: 4 }}>{doc.title}</div>
-                  {doc.originalName && <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>{doc.originalName}</div>}
-                  {badge && (
-                    <div style={{ display: "inline-block", padding: "3px 10px", borderRadius: 8, background: badge.bg, color: badge.color, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{badge.label}</div>
-                  )}
-                  {doc.notes && <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6b7280", lineHeight: 1.4 }}>{doc.notes}</p>}
-                  <div style={{ display: "flex", gap: 7, marginTop: 8, flexWrap: "wrap" }}>
-                    {doc.file && (
-                      <button
-                        onClick={() => setPreviewDoc(doc)}
-                        style={{ padding: "6px 12px", background: "#f1f5f9", borderRadius: 9, border: "none", fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer", fontFamily: "inherit" }}
-                      >👁 Preview</button>
-                    )}
-                    {doc.file && (
-                      <a href={`/uploads/${doc.file}`} download={doc.originalName || doc.file} style={{ padding: "6px 12px", background: "#f1f5f9", borderRadius: 9, textDecoration: "none", fontSize: 12, fontWeight: 600, color: "#374151" }}>⬇ Download</a>
-                    )}
-                    <button onClick={() => openEdit(doc)} style={{ padding: "6px 12px", background: "#f1f5f9", borderRadius: 9, border: "none", fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
-                    <button onClick={() => setDeleteId(doc.id)} style={{ padding: "6px 12px", background: "rgba(252,165,165,0.1)", borderRadius: 9, border: "1px solid rgba(220,38,38,0.2)", fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Preview modal */}
       {previewDoc && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setPreviewDoc(null)}>
           <div style={{
-            background: "#fff", borderRadius: 20, width: "min(900px, 96vw)",
+            background: "var(--g-card)", borderRadius: 20, width: "min(900px, 96vw)",
             maxHeight: "calc(100vh - 40px)", display: "flex", flexDirection: "column",
-            overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+            overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #e5e7eb" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid var(--g-hair)" }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>{previewDoc.title}</div>
-                {previewDoc.originalName && <div style={{ fontSize: 12, color: "#9ca3af" }}>{previewDoc.originalName}</div>}
+                <div style={{ fontWeight: 600, fontSize: 16, color: "var(--g-ink)", fontFamily: "var(--g-serif)" }}>{previewDoc.title}</div>
+                {previewDoc.originalName && <div style={{ fontSize: 12, color: "var(--g-mute2)", marginTop: 2 }}>{previewDoc.originalName}</div>}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <a href={`/uploads/${previewDoc.file}`} download={previewDoc.originalName || previewDoc.file} style={{ padding: "7px 14px", background: "#f1f5f9", borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 600, color: "#374151" }}>⬇ Download</a>
-                <button onClick={() => setPreviewDoc(null)} style={{ padding: "7px 14px", background: "#f1f5f9", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer", fontFamily: "inherit" }}>Close</button>
+                <a href={`/uploads/${previewDoc.file}`} download={previewDoc.originalName || previewDoc.file} style={{ ...btnSecondary, padding: "7px 14px", fontSize: 13, textDecoration: "none" }}>Download</a>
+                <button onClick={() => setPreviewDoc(null)} style={{ ...btnSecondary, padding: "7px 14px", fontSize: 13 }}>Close</button>
               </div>
             </div>
             <div style={{ flex: 1, overflow: "hidden", background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 400 }}>
               {isImage(previewDoc.originalName) ? (
-                <img
-                  src={`/uploads/${previewDoc.file}`}
-                  alt={previewDoc.title}
-                  style={{ maxWidth: "100%", maxHeight: "calc(100vh - 160px)", objectFit: "contain" }}
-                />
+                <img src={`/uploads/${previewDoc.file}`} alt={previewDoc.title} style={{ maxWidth: "100%", maxHeight: "calc(100vh - 160px)", objectFit: "contain" }} />
               ) : isPdf(previewDoc.originalName) ? (
-                <iframe
-                  src={`/uploads/${previewDoc.file}`}
-                  title={previewDoc.title}
-                  style={{ width: "100%", height: "calc(100vh - 160px)", border: "none" }}
-                />
+                <iframe src={`/uploads/${previewDoc.file}`} title={previewDoc.title} style={{ width: "100%", height: "calc(100vh - 160px)", border: "none" }} />
               ) : (
                 <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
                   <div style={{ fontSize: 64, marginBottom: 16 }}>📄</div>
                   <div style={{ fontSize: 16 }}>Preview not available for this file type.</div>
-                  <a href={`/uploads/${previewDoc.file}`} download={previewDoc.originalName || previewDoc.file} style={{ display: "inline-block", marginTop: 16, padding: "10px 20px", background: "var(--accent, #16a34a)", borderRadius: 10, textDecoration: "none", fontSize: 14, fontWeight: 600, color: "#fff" }}>⬇ Download</a>
+                  <a href={`/uploads/${previewDoc.file}`} download={previewDoc.originalName || previewDoc.file} style={{ display: "inline-block", marginTop: 16, padding: "10px 20px", background: "var(--g-sage)", borderRadius: 10, textDecoration: "none", fontSize: 14, fontWeight: 600, color: "#fff" }}>Download</a>
                 </div>
               )}
             </div>
@@ -294,7 +272,7 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
       {form && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && closeModal()}>
           <div className="modal-box" style={{ maxWidth: 480 }}>
-            <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 700 }}>{form.id ? "Edit Document" : "Add Document"}</h3>
+            <h3 style={{ margin: "0 0 24px", fontSize: 24, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>{form.id ? "Edit Document" : "Add Document"}</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div>
                 <label style={labelStyle}>Title *</label>
@@ -319,7 +297,7 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
                 <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: "none" }} onChange={handleFile} />
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <button type="button" style={btnSecondary} onClick={() => fileRef.current.click()}>Choose File</button>
-                  <span style={{ fontSize: 13, color: "#6b7280" }}>{file ? file.name : (form.originalName || "No file selected")}</span>
+                  <span style={{ fontSize: 13, color: "var(--g-muted)" }}>{file ? file.name : (form.originalName || "No file selected")}</span>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
@@ -335,25 +313,25 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
       {showCatManager && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowCatManager(false)}>
           <div className="modal-box" style={{ maxWidth: 420 }}>
-            <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 700 }}>Manage Categories</h3>
+            <h3 style={{ margin: "0 0 24px", fontSize: 24, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Manage Categories</h3>
 
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Default</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--g-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Default</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {DEFAULT_CATEGORIES.map(c => (
-                  <span key={c} style={{ padding: "5px 12px", borderRadius: 10, background: (CAT_COLORS[c] || DEFAULT_CAT_COLOR) + "18", color: CAT_COLORS[c] || DEFAULT_CAT_COLOR, fontSize: 13, fontWeight: 600 }}>{c}</span>
+                  <span key={c} style={{ padding: "5px 12px", borderRadius: 999, background: (CAT_COLORS[c] || DEFAULT_CAT_COLOR) + "18", color: CAT_COLORS[c] || DEFAULT_CAT_COLOR, fontSize: 13, fontWeight: 600 }}>{c}</span>
                 ))}
               </div>
             </div>
 
             {customCats.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Custom</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--g-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Custom</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {customCats.map(c => (
-                    <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: "#f1f5f9", color: "#374151", fontSize: 13, fontWeight: 600 }}>
+                    <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 999, background: "var(--g-bg)", color: "var(--g-ink2)", border: "1px solid var(--g-hair)", fontSize: 13, fontWeight: 600 }}>
                       {c}
-                      <button onClick={() => removeCustomCategory(c)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
+                      <button onClick={() => removeCustomCategory(c)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--g-mute2)", fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
                     </span>
                   ))}
                 </div>
@@ -385,11 +363,10 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
       {deleteId && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setDeleteId(null)}>
           <div className="modal-box" style={{ maxWidth: 360, textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🗑️</div>
-            <h3 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 700 }}>Delete Document?</h3>
-            <p style={{ margin: "0 0 24px", color: "#6b7280" }}>The file will be permanently removed.</p>
+            <h3 style={{ margin: "0 0 10px", fontSize: 22, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Delete Document?</h3>
+            <p style={{ margin: "0 0 24px", color: "var(--g-muted)", fontSize: 14 }}>The file will be permanently removed.</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <button onClick={() => confirmDelete(deleteId)} style={{ padding: "10px 20px", background: "rgba(252,165,165,0.12)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+              <button onClick={() => confirmDelete(deleteId)} style={{ padding: "10px 20px", background: "var(--g-brick-bg)", color: "var(--g-brick)", border: "1px solid var(--g-hair)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
               <button style={btnSecondary} onClick={() => setDeleteId(null)}>Cancel</button>
             </div>
           </div>

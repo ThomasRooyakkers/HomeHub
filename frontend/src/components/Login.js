@@ -27,52 +27,79 @@ export default function Login({ onLogin }) {
 
   const inputStyle = {
     width: "100%",
-    padding: "10px 14px",
-    border: "1px solid #d1d5db",
-    borderRadius: 10,
-    fontSize: 15,
+    padding: "11px 14px",
+    border: "1px solid var(--g-hair)",
+    borderRadius: 12,
+    fontSize: 14,
     outline: "none",
-    fontFamily: "inherit",
+    fontFamily: "var(--g-sans)",
+    background: "#fff",
+    color: "var(--g-ink)",
     boxSizing: "border-box",
+  };
+
+  const labelStyle = {
+    display: "block",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--g-muted)",
+    marginBottom: 6,
+    fontFamily: "var(--g-sans)",
   };
 
   return (
     <div style={{
       minHeight: "100vh",
-      background: "#eef2f7",
+      background: "var(--g-bg)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+      fontFamily: "var(--g-sans)",
     }}>
       <div style={{
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 28,
+        background: "var(--g-card)",
+        borderRadius: 24,
         padding: "48px 40px",
-        width: 380,
-        boxShadow: "0 24px 60px rgba(15,23,42,0.08)",
+        width: "100%",
+        maxWidth: 400,
+        boxShadow: "var(--g-shadow)",
       }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
+        {/* Brand mark */}
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
           <div style={{
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 56,
-            height: 56,
-            borderRadius: 18,
-            background: "#f0fdf4",
-            fontSize: 24,
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: "var(--g-sage)",
             marginBottom: 16,
-          }}>🏡</div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#111827" }}>Home Hub</h1>
-          <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 15 }}>Sign in to continue</p>
+          }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M2 9.5L10 3l8 6.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 8.5V17h4v-4h4v4h4V8.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <h1 style={{
+            margin: 0,
+            fontSize: 28,
+            fontWeight: 400,
+            fontFamily: "var(--g-serif)",
+            color: "var(--g-ink)",
+            letterSpacing: "-0.5px",
+          }}>HomeHub</h1>
+          <p style={{
+            margin: "6px 0 0",
+            color: "var(--g-ink2)",
+            fontSize: 14,
+            fontFamily: "var(--g-sans)",
+          }}>Sign in to continue</p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-              Username
-            </label>
+            <label style={labelStyle}>Username</label>
             <input
               type="text"
               value={username}
@@ -85,9 +112,7 @@ export default function Login({ onLogin }) {
           </div>
 
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-              Password
-            </label>
+            <label style={labelStyle}>Password</label>
             <input
               type="password"
               value={password}
@@ -100,13 +125,11 @@ export default function Login({ onLogin }) {
 
           {error && (
             <div style={{
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              color: "#991b1b",
-              borderRadius: 10,
-              padding: "10px 14px",
-              fontSize: 14,
+              color: "var(--g-brick)",
+              fontSize: 13,
+              fontWeight: 500,
               marginBottom: 16,
+              fontFamily: "var(--g-sans)",
             }}>
               {error}
             </div>
@@ -118,14 +141,15 @@ export default function Login({ onLogin }) {
             style={{
               width: "100%",
               padding: "12px",
-              background: loading ? "#86efac" : "#16a34a",
+              background: loading ? "var(--g-mute2)" : "var(--g-sage)",
               color: "#ffffff",
               border: "none",
-              borderRadius: 10,
-              fontSize: 15,
-              fontWeight: 700,
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 600,
               cursor: loading ? "not-allowed" : "pointer",
-              fontFamily: "inherit",
+              fontFamily: "var(--g-sans)",
+              transition: "opacity 0.15s",
             }}
           >
             {loading ? "Signing in…" : "Sign in"}

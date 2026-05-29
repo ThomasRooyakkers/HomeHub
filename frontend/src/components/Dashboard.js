@@ -1,375 +1,740 @@
-import { useMemo } from "react";
-import { fmt, fmtDate, displayStatus, useTodayKey } from "../lib/utils";
+import { useState, useEffect, useMemo } from "react";
+import { fmt, displayStatus, useTodayKey } from "../lib/utils";
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+// ─── Weather ──────────────────────────────────────────────────────────────────
 
-function Section({ title, count, variant, onViewAll, children }) {
-  const v = variant === "red"
-    ? { bg: "rgba(254,242,242,0.7)", border: "rgba(220,38,38,0.14)", title: "#991b1b", badge: { bg: "#fee2e2", color: "#991b1b" } }
-    : { bg: "rgba(255,251,235,0.7)", border: "rgba(245,158,11,0.18)", title: "#92400e", badge: { bg: "#fef3c7", color: "#92400e" } };
+const LAT = 51.05, LON = 5.45;
+
+function useWeather() {
+  const [weather, setWeather] = useState(null);
+  useEffect(() => {
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+      `&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
+      `&timezone=Europe%2FBrussels&forecast_days=1`;
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        const c = data.current;
+        const d = data.daily;
+        setWeather({
+          temp: Math.round(c.temperature_2m),
+          high: Math.round(d.temperature_2m_max[0]),
+          low: Math.round(d.temperature_2m_min[0]),
+          sunrise: d.sunrise[0].slice(-5),
+          sunset: d.sunset[0].slice(-5),
+          code: c.weathercode,
+        });
+      })
+      .catch(() => {});
+  }, []);
+  return weather;
+}
+
+function weatherLabel(code) {
+  if (code == null) return "—";
+  if (code === 0) return "Sunny";
+  if (code <= 2) return "Partly cloudy";
+  if (code <= 3) return "Cloudy";
+  if (code <= 9) return "Overcast";
+  if (code <= 29) return "Foggy";
+  if (code <= 39) return "Drizzle";
+  if (code <= 59) return "Rainy";
+  if (code <= 69) return "Sleet";
+  if (code <= 77) return "Snow";
+  if (code <= 82) return "Showers";
+  return "Stormy";
+}
+
+function WeatherCard({ weather }) {
+  if (!weather) return null;
   return (
-    <div style={{ background: v.bg, border: `1px solid ${v.border}`, borderRadius: 20, padding: "20px 20px 16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: v.title }}>{title}</h3>
-          <span style={{ background: v.badge.bg, color: v.badge.color, fontSize: 12, fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>{count}</span>
+    <div style={{
+      background: "var(--g-card)",
+      border: "1px solid var(--g-hair)",
+      borderRadius: 20,
+      padding: "16px 20px",
+      display: "flex",
+      alignItems: "center",
+      gap: 14,
+      boxShadow: "var(--g-shadow-sm)",
+      minWidth: 200,
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 12,
+        background: "var(--g-sky-bg)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 20, flexShrink: 0,
+      }}>
+        {weather.code === 0 ? "☀️" : weather.code <= 2 ? "🌤️" : weather.code <= 3 ? "☁️" : weather.code <= 9 ? "🌫️" : weather.code <= 67 ? "🌧️" : "❄️"}
+      </div>
+      <div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+          <span style={{ fontSize: 26, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)", lineHeight: 1 }}>
+            {weather.temp}°
+          </span>
         </div>
-        <button onClick={onViewAll} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-          View all →
+        <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>
+          {weatherLabel(weather.code)} · H {weather.high} · L {weather.low}
+        </p>
+      </div>
+      <div style={{ marginLeft: "auto", textAlign: "right" }}>
+        <p style={{ margin: 0, fontSize: 11.5, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>↑ {weather.sunrise}</p>
+        <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>↓ {weather.sunset}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const NUM_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const toWord = (n) => (n < NUM_WORDS.length ? NUM_WORDS[n] : String(n));
+
+function capitalize(s) {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function freqToDays(freq) {
+  if (!freq) return 7;
+  const f = freq.toLowerCase();
+  if (f === "daily") return 1;
+  if (f === "weekly") return 7;
+  if (f === "biweekly") return 14;
+  if (f === "monthly") return 30;
+  const m = f.match(/every\s+(\d+)\s+day/);
+  if (m) return parseInt(m[1]);
+  const m2 = f.match(/every\s+(\d+)\s+week/);
+  if (m2) return parseInt(m2[1]) * 7;
+  return 7;
+}
+
+function daysUntilWater(plant) {
+  if (!plant.lastWatered) return -999;
+  const days = freqToDays(plant.wateringFrequency);
+  const next = new Date(plant.lastWatered);
+  next.setDate(next.getDate() + days);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  next.setHours(0, 0, 0, 0);
+  return Math.ceil((next - today) / 86400000);
+}
+
+function billDaysLeft(inv) {
+  if (!inv.dueDate) return null;
+  const due = new Date(inv.dueDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  return Math.ceil((due - today) / 86400000);
+}
+
+// ─── SVG icons ────────────────────────────────────────────────────────────────
+
+function IconDoc({ color = "var(--g-honey)" }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <rect x="2.5" y="1.5" width="9" height="13" rx="1.5" stroke={color} strokeWidth="1.4" />
+      <path d="M5 5.5h6M5 8h6M5 10.5h4" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconLeaf() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <path d="M13 2s-4-1-7 2c-2 2-2.5 5-1.5 7.5M5.5 11.5c2.5 1 6 0 7.5-9.5" stroke="var(--g-sage)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.5 13.5c1-1 2-2.5 3-4" stroke="var(--g-sage)" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconCart() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M1 1.5h2l1.5 7h7l1.5-5H4" stroke="var(--g-muted)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6.5" cy="13" r="1" fill="var(--g-muted)" />
+      <circle cx="11.5" cy="13" r="1" fill="var(--g-muted)" />
+    </svg>
+  );
+}
+
+function IconWrench() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <path d="M11 2a3 3 0 00-2.83 4L2 12.17a1 1 0 001.41 1.41L9.57 7.41A3 3 0 0011 8a3 3 0 000-6z" stroke="var(--g-muted)" strokeWidth="1.3" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ─── Meal card ────────────────────────────────────────────────────────────────
+
+function MealCard({ todayMeal, recipe, onOpenRecipe }) {
+  const missingIngCount = 0; // placeholder — real matching would need structured ingredients
+
+  return (
+    <div style={{
+      background: "var(--g-card)",
+      border: "1px solid var(--g-hair)",
+      borderRadius: 20,
+      padding: 24,
+      boxShadow: "var(--g-shadow-sm)",
+      marginBottom: 16,
+    }}>
+      <p style={{
+        margin: "0 0 14px",
+        fontSize: 11.5, fontWeight: 600, textTransform: "uppercase",
+        letterSpacing: 0.9, color: "var(--g-sage-dark)", fontFamily: "var(--g-sans)",
+      }}>
+        Tonight at the table
+      </p>
+
+      {todayMeal ? (
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <h2 style={{
+              margin: 0, fontSize: 28, fontWeight: 400,
+              fontFamily: "var(--g-serif)", color: "var(--g-ink)", lineHeight: 1.15,
+            }}>
+              {todayMeal.title}
+            </h2>
+            {todayMeal.notes && (
+              <p style={{
+                margin: "6px 0 0", fontSize: 14, fontStyle: "italic",
+                color: "var(--g-muted)", fontFamily: "var(--g-serif)",
+              }}>
+                {todayMeal.notes}
+              </p>
+            )}
+
+            {/* Tags */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>
+              {recipe?.prepTime && (
+                <span style={tagStyle()}>{recipe.prepTime} min</span>
+              )}
+              {recipe?.servings && (
+                <span style={tagStyle()}>Serves {recipe.servings}</span>
+              )}
+              {!recipe && todayMeal.recipeId == null && null}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+              <button
+                onClick={onOpenRecipe}
+                style={{
+                  background: "var(--g-sage)", border: "none", color: "#fff",
+                  padding: "9px 18px", borderRadius: 999,
+                  fontSize: 13.5, fontWeight: 600, fontFamily: "var(--g-sans)", cursor: "pointer",
+                }}
+              >
+                Open recipe
+              </button>
+            </div>
+          </div>
+
+          {/* Photo placeholder */}
+          <div style={{
+            width: 96, height: 96, borderRadius: 14, flexShrink: 0,
+            background: "repeating-linear-gradient(45deg, var(--g-hair2) 0px, var(--g-hair2) 6px, var(--g-hair) 6px, var(--g-hair) 12px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {recipe?.image
+              ? <img src={recipe.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 14 }} />
+              : <span style={{ fontSize: 11, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>recipe<br />photo</span>}
+          </div>
+        </div>
+      ) : (
+        <div>
+          <p style={{ margin: 0, color: "var(--g-muted)", fontSize: 14, fontFamily: "var(--g-sans)" }}>
+            Nothing planned yet.
+          </p>
+          <button
+            onClick={onOpenRecipe}
+            style={{
+              marginTop: 12, background: "var(--g-sage)", border: "none", color: "#fff",
+              padding: "9px 18px", borderRadius: 999,
+              fontSize: 13.5, fontWeight: 600, fontFamily: "var(--g-sans)", cursor: "pointer",
+            }}
+          >
+            Plan dinner
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function tagStyle(variant = "neutral") {
+  const variants = {
+    neutral: { background: "var(--g-bg2)", color: "var(--g-ink2)" },
+    amber:   { background: "var(--g-honey-bg)", color: "var(--g-honey)" },
+    brick:   { background: "var(--g-brick-bg)", color: "var(--g-brick)" },
+    sage:    { background: "var(--g-sage-bg)", color: "var(--g-sage-dark)" },
+  };
+  const v = variants[variant] || variants.neutral;
+  return {
+    ...v,
+    fontSize: 12.5, fontWeight: 600, fontFamily: "var(--g-sans)",
+    padding: "4px 10px", borderRadius: 999,
+  };
+}
+
+// ─── Bills card ───────────────────────────────────────────────────────────────
+
+function BillsCard({ invoices, onNavigate, onTogglePaid }) {
+  const openInvoices = useMemo(() => invoices.filter(i => displayStatus(i) !== "paid"), [invoices]);
+  const total = useMemo(() => openInvoices.reduce((a, i) => a + parseFloat(i.amount || 0), 0), [openInvoices]);
+
+  return (
+    <div style={{
+      background: "var(--g-card)", border: "1px solid var(--g-hair)",
+      borderRadius: 20, padding: "20px 24px", boxShadow: "var(--g-shadow-sm)",
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, fontFamily: "var(--g-sans)", color: "var(--g-ink)" }}>
+            Bills to settle
+          </h3>
+          <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>
+            {openInvoices.length} open · {fmt(total)} outstanding
+          </p>
+        </div>
+        <button onClick={() => onNavigate("invoices")} style={linkBtnStyle()}>
+          All →
         </button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
-    </div>
-  );
-}
 
-function InvoiceRow({ inv, onToggle, urgent }) {
-  const daysLeft = inv.dueDate
-    ? Math.ceil((new Date(inv.dueDate) - new Date()) / 86400000)
-    : null;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#fff", borderRadius: 14, border: `1px solid ${urgent ? "rgba(220,38,38,0.1)" : "rgba(245,158,11,0.12)"}`, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{inv.vendor}</span>
-          {inv.invoiceNo && <span style={{ fontSize: 12, color: "#94a3b8" }}>#{inv.invoiceNo}</span>}
-          {inv.file && <span style={{ fontSize: 11 }}>📎</span>}
+      {openInvoices.length === 0 ? (
+        <p style={{ margin: "16px 0 0", color: "var(--g-muted)", fontSize: 14, fontFamily: "var(--g-sans)" }}>
+          All clear — no unpaid bills.
+        </p>
+      ) : (
+        <div>
+          {openInvoices.map(inv => {
+            const days = billDaysLeft(inv);
+            const isOverdue = displayStatus(inv) === "overdue";
+            const isDueSoon = !isOverdue && days !== null && days <= 3;
+            const isDueThisWeek = !isOverdue && !isDueSoon && days !== null && days <= 7;
+
+            const iconBg = isOverdue ? "var(--g-brick-bg)" : isDueSoon ? "var(--g-honey-bg)" : "var(--g-bg2)";
+            const iconColor = isOverdue ? "var(--g-brick)" : isDueSoon ? "var(--g-honey)" : "var(--g-mute2)";
+
+            let badge = null;
+            if (isOverdue && days !== null) badge = { label: `${Math.abs(days)} d late`, color: "var(--g-brick)", bg: "var(--g-brick-bg)" };
+            else if (isDueSoon) badge = { label: `in ${days} d`, color: "var(--g-honey)", bg: "var(--g-honey-bg)" };
+            else if (isDueThisWeek) badge = { label: `in ${days} d`, color: "var(--g-honey)", bg: "var(--g-honey-bg)" };
+
+            const subtitle = [
+              inv.category,
+              inv.invoiceNo ? inv.invoiceNo : null,
+            ].filter(Boolean).join(" · ");
+
+            return (
+              <div key={inv.id} style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "14px 0", borderTop: "1px solid var(--g-hair2)",
+              }}>
+                {/* Icon */}
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  background: iconBg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <IconDoc color={iconColor} />
+                </div>
+
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 600, fontSize: 14, fontFamily: "var(--g-sans)", color: "var(--g-ink)" }}>
+                      {inv.vendor}
+                    </span>
+                    {badge && (
+                      <span style={{
+                        fontSize: 11.5, fontWeight: 600, fontFamily: "var(--g-sans)",
+                        color: badge.color, background: badge.bg,
+                        padding: "2px 8px", borderRadius: 999,
+                      }}>
+                        {badge.label}
+                      </span>
+                    )}
+                  </div>
+                  {subtitle && (
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>
+                      {subtitle}
+                    </p>
+                  )}
+                </div>
+
+                {/* Amount */}
+                <span style={{ fontWeight: 700, fontSize: 14, fontFamily: "var(--g-sans)", color: "var(--g-ink)", flexShrink: 0 }}>
+                  {fmt(inv.amount)}
+                </span>
+
+                {/* Action */}
+                <button
+                  onClick={() => onTogglePaid(inv.id)}
+                  style={{
+                    background: "var(--g-sage-bg)", border: "none", color: "var(--g-sage-dark)",
+                    padding: "7px 14px", borderRadius: 999, flexShrink: 0,
+                    fontSize: 12.5, fontWeight: 600, fontFamily: "var(--g-sans)", cursor: "pointer",
+                  }}
+                >
+                  Mark paid
+                </button>
+              </div>
+            );
+          })}
         </div>
-        <p style={{ margin: "3px 0 0", fontSize: 12, color: urgent ? "#b91c1c" : "#92400e" }}>
-          {urgent
-            ? `Overdue since ${fmtDate(inv.dueDate)}`
-            : `Due ${fmtDate(inv.dueDate)}${daysLeft !== null ? ` · ${daysLeft}d left` : ""}`}
-        </p>
-      </div>
-      <span style={{ fontWeight: 800, fontSize: 15, color: "#1e293b", flexShrink: 0 }}>{fmt(inv.amount)}</span>
-      <button
-        onClick={onToggle}
-        style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", border: "none", color: "#fff", padding: "7px 13px", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0, boxShadow: "0 2px 8px rgba(22,163,74,0.25)" }}
-      >
-        Mark paid
-      </button>
+      )}
     </div>
   );
 }
 
-function MaintenanceRow({ task, onToggle }) {
-  const isOverdue = task.nextDue && new Date(task.nextDue) < new Date();
+// ─── Up next card ─────────────────────────────────────────────────────────────
+
+const DOT_COLORS = ["#e05c5c", "#5c9ee0", "#5cb87a", "#c47ed6", "#e0965c"];
+
+function UpNextCard({ events, onNavigate }) {
+  const upcoming = useMemo(() => {
+    const now = new Date();
+    return events
+      .map(e => ({ ...e, startDate: new Date(e.start) }))
+      .filter(e => e.startDate >= now)
+      .sort((a, b) => a.startDate - b.startDate)
+      .slice(0, 4);
+  }, [events]);
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#fff", borderRadius: 14, border: `1px solid ${isOverdue ? "rgba(220,38,38,0.1)" : "rgba(245,158,11,0.12)"}`, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{task.title}</span>
-        <p style={{ margin: "3px 0 0", fontSize: 12, color: isOverdue ? "#b91c1c" : "#92400e" }}>
-          {task.frequency}
-          {task.nextDue ? ` · ${isOverdue ? "Overdue since" : "Due"} ${fmtDate(task.nextDue)}` : ""}
-        </p>
+    <div style={{
+      background: "var(--g-card)", border: "1px solid var(--g-hair)",
+      borderRadius: 20, padding: "20px 24px", boxShadow: "var(--g-shadow-sm)",
+      marginBottom: 14,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: upcoming.length ? 4 : 0 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, fontFamily: "var(--g-sans)", color: "var(--g-ink)" }}>
+          Up next
+        </h3>
+        <button onClick={() => onNavigate("calendar")} style={linkBtnStyle()}>
+          Calendar →
+        </button>
       </div>
-      <button
-        onClick={onToggle}
-        style={{ background: "rgba(22,163,74,0.1)", border: "1px solid rgba(22,163,74,0.3)", color: "#16a34a", padding: "7px 13px", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
-      >
-        Mark done
-      </button>
+
+      {upcoming.length === 0 ? (
+        <p style={{ margin: "12px 0 0", fontSize: 13.5, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>
+          No upcoming events. Import a calendar to get started.
+        </p>
+      ) : (
+        <div>
+          {upcoming.map((ev, i) => {
+            const d = ev.startDate;
+            const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+            const date = d.getDate();
+            const timeStr = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+            const dotColor = DOT_COLORS[i % DOT_COLORS.length];
+
+            return (
+              <div key={ev.uid || i} style={{
+                display: "flex", gap: 14, alignItems: "flex-start",
+                padding: "13px 0", borderTop: "1px solid var(--g-hair2)",
+              }}>
+                {/* Date column */}
+                <div style={{ flexShrink: 0, width: 34, textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, fontFamily: "var(--g-sans)", color: "var(--g-mute2)", letterSpacing: 0.5 }}>
+                    {weekday}
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: 20, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)", lineHeight: 1 }}>
+                    {date}
+                  </p>
+                </div>
+
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600, fontSize: 14, fontFamily: "var(--g-sans)", color: "var(--g-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {ev.title}
+                    </span>
+                  </div>
+                  <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>
+                    {timeStr}{ev.location ? ` · ${ev.location}` : ""}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Dashboard ─────────────────────────────────────────────────────────────────
+// ─── Mini stat cards ──────────────────────────────────────────────────────────
+
+function MiniCard({ icon, value, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: "var(--g-card)", border: "1px solid var(--g-hair)",
+        borderRadius: 20, padding: "18px 20px", boxShadow: "var(--g-shadow-sm)",
+        textAlign: "left", cursor: "pointer", width: "100%",
+        transition: "box-shadow 0.15s ease, transform 0.15s ease",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "var(--g-shadow)"; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "var(--g-shadow-sm)"; }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, fontFamily: "var(--g-sans)", color: "var(--g-ink)" }}>
+          {label.split("\n")[0]}
+        </p>
+        {icon}
+      </div>
+      <p style={{ margin: "8px 0 2px", fontSize: 30, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)", lineHeight: 1 }}>
+        {value}
+      </p>
+      {label.split("\n")[1] && (
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>
+          {label.split("\n")[1]}
+        </p>
+      )}
+    </button>
+  );
+}
+
+// ─── Garden card ──────────────────────────────────────────────────────────────
+
+function GardenCard({ plants, onNavigate, onWaterPlant }) {
+  const displayed = plants.slice(0, 6);
+
+  return (
+    <div style={{
+      background: "var(--g-card)", border: "1px solid var(--g-hair)",
+      borderRadius: 20, padding: "20px 24px", boxShadow: "var(--g-shadow-sm)",
+      marginTop: 14,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, fontFamily: "var(--g-sans)", color: "var(--g-ink)" }}>
+          The garden
+        </h3>
+        <button onClick={() => onNavigate("plants")} style={linkBtnStyle()}>
+          All plants →
+        </button>
+      </div>
+
+      {displayed.length === 0 ? (
+        <p style={{ margin: "12px 0 0", fontSize: 13.5, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>
+          No plants yet. Add some to track watering.
+        </p>
+      ) : (
+        <div>
+          {displayed.map(plant => {
+            const daysLeft = daysUntilWater(plant);
+            const needsWater = daysLeft <= 0;
+
+            return (
+              <div key={plant.id} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "12px 0", borderTop: "1px solid var(--g-hair2)",
+              }}>
+                {/* Icon */}
+                <div style={{
+                  width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                  background: "var(--g-sage-bg)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <IconLeaf />
+                </div>
+
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13.5, fontFamily: "var(--g-sans)", color: "var(--g-ink)" }}>
+                    {plant.name}
+                  </span>
+                  {plant.location && (
+                    <p style={{ margin: "1px 0 0", fontSize: 11.5, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>
+                      {plant.location}
+                    </p>
+                  )}
+                </div>
+
+                {/* Water action */}
+                {needsWater ? (
+                  <button
+                    onClick={() => onWaterPlant(plant.id)}
+                    style={{
+                      background: "var(--g-sky-bg)", border: "none", color: "var(--g-sky)",
+                      padding: "6px 13px", borderRadius: 999,
+                      fontSize: 12.5, fontWeight: 600, fontFamily: "var(--g-sans)", cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 2c-3 4-5 6-5 9a5 5 0 0010 0c0-3-2-5-5-9z" stroke="var(--g-sky)" strokeWidth="1.4" strokeLinejoin="round" />
+                    </svg>
+                    Water
+                  </button>
+                ) : (
+                  <span style={{ fontSize: 12.5, fontWeight: 600, fontFamily: "var(--g-sans)", color: "var(--g-mute2)", flexShrink: 0 }}>
+                    ◯ {daysLeft}d
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function linkBtnStyle() {
+  return {
+    background: "none", border: "none", padding: 0,
+    color: "var(--g-muted)", fontFamily: "var(--g-sans)",
+    fontSize: 13, fontWeight: 600, cursor: "pointer",
+  };
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard({
   invoices, mealPlan, recipes, maintenanceTasks,
   calendarEvents,
   shopping = { stores: [], items: [] },
-  documents = [],
-  contacts = [],
-  inventory = [],
+  plants = [],
+  currentUser,
   onNavigate,
-  onToggleInvoicePaid, onToggleMaintenanceDone,
+  onToggleInvoicePaid, onToggleMaintenanceDone, onWaterPlant,
 }) {
+  const weather = useWeather();
   const todayKey = useTodayKey();
+
   const now = useMemo(() => new Date(), []);
+  const hour = now.getHours();
+  const timeOfDay = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+  const dayName = now.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
+
+  const todayMeal = mealPlan[todayKey];
+  const todayRecipe = useMemo(() => {
+    if (!todayMeal?.recipeId) return null;
+    return recipes.find(r => String(r.id) === String(todayMeal.recipeId)) || null;
+  }, [todayMeal, recipes]);
+
+  const firstName = useMemo(() => {
+    if (currentUser?.username) {
+      const name = currentUser.username.split(/[._\s]/)[0];
+      return capitalize(name);
+    }
+    return "there";
+  }, [currentUser]);
+
   const sevenDaysOut = useMemo(() => {
     const d = new Date(now);
     d.setDate(d.getDate() + 7);
     return d;
   }, [now]);
-  const todayMeal = mealPlan[todayKey];
-  const getRecipeById = (id) => recipes.find(r => String(r.id) === String(id)) || null;
 
-  // Invoice buckets
-  const overdueInvoices = useMemo(
-    () => invoices.filter(i => displayStatus(i) === "overdue"),
-    [invoices]
-  );
-  const dueSoonInvoices = useMemo(
-    () => invoices.filter(i => {
-      if (displayStatus(i) !== "unpaid" || !i.dueDate) return false;
-      const d = new Date(i.dueDate);
-      return d >= now && d <= sevenDaysOut;
-    }),
-    [invoices, now, sevenDaysOut]
-  );
+  const attentionInvoices = useMemo(() => invoices.filter(i => {
+    const s = displayStatus(i);
+    if (s === "paid") return false;
+    if (s === "overdue") return true;
+    if (!i.dueDate) return false;
+    return new Date(i.dueDate) <= sevenDaysOut;
+  }), [invoices, sevenDaysOut]);
 
-  // Maintenance bucket — overdue or due within 7 days
-  const maintenanceDue = useMemo(
-    () => maintenanceTasks.filter(t => {
-      if (t.completed) return false;
-      return !t.nextDue || new Date(t.nextDue) <= sevenDaysOut;
-    }),
-    [maintenanceTasks, sevenDaysOut]
-  );
+  const subtitle = useMemo(() => {
+    const n = attentionInvoices.length;
+    if (n === 0) return "The house is calm.";
+    const word = capitalize(toWord(n));
+    return `${word} bill${n !== 1 ? "s" : ""} want${n === 1 ? "s" : ""} attention this week. Otherwise — the house is calm.`;
+  }, [attentionInvoices]);
 
-  const upcomingEvents = useMemo(
-    () => calendarEvents
-      .map(e => ({ ...e, startDate: new Date(e.start) }))
-      .filter(e => e.startDate >= now)
-      .sort((a, b) => a.startDate - b.startDate)
-      .slice(0, 4),
-    [calendarEvents, now]
-  );
-
-  const totalUnpaid = useMemo(
-    () => invoices.filter(i => displayStatus(i) !== "paid").reduce((a, i) => a + parseFloat(i.amount || 0), 0),
-    [invoices]
-  );
-
-  // New module stats
   const shoppingUnchecked = useMemo(() => (shopping.items || []).filter(i => !i.checked).length, [shopping]);
   const shoppingStores = (shopping.stores || []).length;
 
-  const docsExpiringSoon = useMemo(() => documents.filter(d => {
-    if (!d.expiryDate) return false;
-    const days = Math.ceil((new Date(d.expiryDate) - now) / 86400000);
-    return days <= 30;
-  }), [documents, now]);
-
-  const warrantyExpiring = useMemo(() => inventory.filter(i => {
-    if (!i.warrantyExpiry) return false;
-    const days = Math.ceil((new Date(i.warrantyExpiry) - now) / 86400000);
-    return days <= 90;
-  }), [inventory, now]);
-
-  const allClear = overdueInvoices.length === 0 && dueSoonInvoices.length === 0 && maintenanceDue.length === 0
-    && docsExpiringSoon.length === 0 && warrantyExpiring.length === 0;
+  const maintenanceDueCount = useMemo(() => maintenanceTasks.filter(t => {
+    if (t.completed) return false;
+    if (!t.nextDue) return true;
+    const d = new Date(t.nextDue);
+    return d <= sevenDaysOut;
+  }).length, [maintenanceTasks, sevenDaysOut]);
 
   return (
-    <div style={{ display: "grid", gap: 24 }}>
+    <div style={{ padding: "40px 40px 60px", fontFamily: "var(--g-sans)" }}>
 
-      {/* ── Stats row ─────────────────────────────────────────────────────────── */}
-      <div className="stats-grid">
-        {[
-          {
-            label: "Unpaid balance",
-            value: fmt(totalUnpaid),
-            color: "#16a34a",
-            alert: false,
-            to: "invoices",
-          },
-          {
-            label: "Overdue",
-            value: overdueInvoices.length,
-            color: overdueInvoices.length > 0 ? "#dc2626" : "#22c55e",
-            alert: overdueInvoices.length > 0,
-            to: "invoices",
-          },
-          {
-            label: "Due this week",
-            value: dueSoonInvoices.length,
-            color: dueSoonInvoices.length > 0 ? "#d97706" : "#22c55e",
-            alert: false,
-            to: "invoices",
-          },
-          {
-            label: "Maintenance due",
-            value: maintenanceDue.length,
-            color: maintenanceDue.length > 0 ? "#d97706" : "#22c55e",
-            alert: false,
-            to: "maintenance",
-          },
-        ].map(card => (
-          <button
-            key={card.label}
-            onClick={() => onNavigate(card.to)}
-            style={{
-              background: card.alert
-                ? "linear-gradient(135deg, #fef2f2, #fee2e2)"
-                : "linear-gradient(135deg, #f0fdf4, #dcfce7)",
-              border: card.alert
-                ? "1px solid rgba(220,38,38,0.2)"
-                : "1px solid rgba(34,197,94,0.2)",
-              borderRadius: 20, padding: "22px 24px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
-              textAlign: "left", cursor: "pointer", transition: "transform 0.15s ease",
-            }}
-            onMouseEnter={e => e.currentTarget.style.transform = "translateY(-2px)"}
-            onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
-          >
-            <p style={{ margin: 0, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{card.label}</p>
-            <p style={{ margin: "10px 0 0", fontSize: 30, fontWeight: 800, color: card.color }}>{card.value}</p>
-          </button>
-        ))}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 36, gap: 24 }}>
+        <div>
+          <p style={{
+            margin: "0 0 6px", fontSize: 11, fontWeight: 700, fontFamily: "var(--g-sans)",
+            textTransform: "uppercase", letterSpacing: 1.5, color: "var(--g-mute2)",
+          }}>
+            {dayName} {timeOfDay}
+          </p>
+          <h1 style={{
+            margin: 0, fontSize: 48, fontWeight: 400,
+            fontFamily: "var(--g-serif)", color: "var(--g-ink)",
+            lineHeight: 1.05, letterSpacing: "-0.5px",
+          }}>
+            Good {timeOfDay}, <em>{firstName}</em>
+          </h1>
+          <p style={{
+            margin: "10px 0 0", fontSize: 14.5, color: "var(--g-muted)",
+            fontFamily: "var(--g-sans)", lineHeight: 1.5,
+          }}>
+            {subtitle}
+          </p>
+        </div>
+        <div style={{ flexShrink: 0, paddingTop: 4 }}>
+          <WeatherCard weather={weather} />
+        </div>
       </div>
 
-      {/* ── Module quick stats ──────────────────────────────────────────────── */}
-      <div className="stats-grid">
-        {[
-          { label: "Shopping items left", value: shoppingUnchecked, subLabel: `${shoppingStores} store${shoppingStores !== 1 ? "s" : ""}`, to: "shopping", icon: "🛒", alert: false },
-          { label: "Documents expiring", value: docsExpiringSoon.length, subLabel: `${documents.length} total`, to: "documents", icon: "📁", alert: docsExpiringSoon.length > 0 },
-          { label: "Contacts", value: contacts.length, subLabel: "household", to: "contacts", icon: "📞", alert: false },
-          { label: "Warranty alerts", value: warrantyExpiring.length, subLabel: `${inventory.length} items tracked`, to: "inventory", icon: "🏷️", alert: warrantyExpiring.length > 0 },
-        ].map(card => (
-          <button
-            key={card.label}
-            onClick={() => onNavigate(card.to)}
-            style={{
-              background: card.alert ? "linear-gradient(135deg, #fffbeb, #fef3c7)" : "rgba(255,255,255,0.9)",
-              border: card.alert ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(0,0,0,0.06)",
-              borderRadius: 20, padding: "18px 20px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-              textAlign: "left", cursor: "pointer", transition: "transform 0.15s ease",
-            }}
-            onMouseEnter={e => e.currentTarget.style.transform = "translateY(-2px)"}
-            onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
-          >
-            <p style={{ margin: 0, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{card.icon} {card.label}</p>
-            <p style={{ margin: "8px 0 2px", fontSize: 28, fontWeight: 800, color: card.alert ? "#d97706" : "#111827" }}>{card.value}</p>
-            <p style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}>{card.subLabel}</p>
-          </button>
-        ))}
-      </div>
-
-      {/* ── Main body ─────────────────────────────────────────────────────────── */}
+      {/* ── Two-column body ─────────────────────────────────────────────────── */}
       <div className="dashboard-main">
 
-        {/* Left — action panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {allClear ? (
-            <div style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 20, padding: "32px 28px", textAlign: "center" }}>
-              <p style={{ margin: 0, fontSize: 32 }}>✅</p>
-              <p style={{ margin: "14px 0 6px", fontSize: 18, fontWeight: 800, color: "#166534" }}>All caught up!</p>
-              <p style={{ margin: 0, color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>No overdue bills, nothing due this week, and no maintenance outstanding.</p>
-            </div>
-          ) : (
-            <>
-              {overdueInvoices.length > 0 && (
-                <Section title="Overdue bills" count={overdueInvoices.length} variant="red" onViewAll={() => onNavigate("invoices")}>
-                  {overdueInvoices.map(inv => (
-                    <InvoiceRow key={inv.id} inv={inv} onToggle={() => onToggleInvoicePaid(inv.id)} urgent />
-                  ))}
-                </Section>
-              )}
-
-              {dueSoonInvoices.length > 0 && (
-                <Section title="Due this week" count={dueSoonInvoices.length} variant="amber" onViewAll={() => onNavigate("invoices")}>
-                  {dueSoonInvoices.map(inv => (
-                    <InvoiceRow key={inv.id} inv={inv} onToggle={() => onToggleInvoicePaid(inv.id)} />
-                  ))}
-                </Section>
-              )}
-
-              {maintenanceDue.length > 0 && (
-                <Section title="Maintenance due" count={maintenanceDue.length} variant="amber" onViewAll={() => onNavigate("maintenance")}>
-                  {maintenanceDue.map(task => (
-                    <MaintenanceRow key={task.id} task={task} onToggle={() => onToggleMaintenanceDone(task.id)} />
-                  ))}
-                </Section>
-              )}
-
-              {docsExpiringSoon.length > 0 && (
-                <Section title="Documents expiring soon" count={docsExpiringSoon.length} variant="amber" onViewAll={() => onNavigate("documents")}>
-                  {docsExpiringSoon.map(doc => {
-                    const days = Math.ceil((new Date(doc.expiryDate) - now) / 86400000);
-                    return (
-                      <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#fff", borderRadius: 12, border: "1px solid rgba(245,158,11,0.15)" }}>
-                        <span style={{ fontSize: 20 }}>📁</span>
-                        <div style={{ flex: 1 }}>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{doc.title}</span>
-                          <p style={{ margin: "2px 0 0", fontSize: 12, color: days < 0 ? "#b91c1c" : "#92400e" }}>
-                            {days < 0 ? `Expired ${Math.abs(days)}d ago` : `Expires in ${days}d`}
-                          </p>
-                        </div>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "#9ca3af" }}>{doc.category}</span>
-                      </div>
-                    );
-                  })}
-                </Section>
-              )}
-
-              {warrantyExpiring.length > 0 && (
-                <Section title="Warranties expiring" count={warrantyExpiring.length} variant="amber" onViewAll={() => onNavigate("inventory")}>
-                  {warrantyExpiring.slice(0, 3).map(item => {
-                    const days = Math.ceil((new Date(item.warrantyExpiry) - now) / 86400000);
-                    return (
-                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#fff", borderRadius: 12, border: "1px solid rgba(245,158,11,0.15)" }}>
-                        <span style={{ fontSize: 20 }}>🏷️</span>
-                        <div style={{ flex: 1 }}>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{item.name}</span>
-                          <p style={{ margin: "2px 0 0", fontSize: 12, color: days < 0 ? "#b91c1c" : "#92400e" }}>
-                            {days < 0 ? "Warranty expired" : `Expires in ${days}d`}
-                            {item.brand ? ` · ${item.brand}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </Section>
-              )}
-            </>
-          )}
+        {/* Left column */}
+        <div>
+          <MealCard
+            todayMeal={todayMeal}
+            recipe={todayRecipe}
+            onOpenRecipe={() => onNavigate("meal")}
+          />
+          <BillsCard
+            invoices={invoices}
+            onNavigate={onNavigate}
+            onTogglePaid={onToggleInvoicePaid}
+          />
         </div>
 
-        {/* Right — meal + events */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        {/* Right column */}
+        <div>
+          <UpNextCard events={calendarEvents} onNavigate={onNavigate} />
 
-          {/* Tonight's dinner */}
-          <div style={{ background: "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 20, padding: 22, boxShadow: "0 4px 16px rgba(22,163,74,0.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#166534" }}>🍽️ Tonight's dinner</h3>
-              <button onClick={() => onNavigate("meal")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Planner →</button>
-            </div>
-            {todayMeal ? (
-              <div>
-                <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#166534" }}>{todayMeal.title}</p>
-                {todayMeal.recipeId && getRecipeById(todayMeal.recipeId) && (
-                  <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13 }}>From: {getRecipeById(todayMeal.recipeId).name}</p>
-                )}
-                {todayMeal.notes && <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>{todayMeal.notes}</p>}
-              </div>
-            ) : (
-              <div>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: 14 }}>Nothing planned yet.</p>
-                <button onClick={() => onNavigate("meal")} style={{ marginTop: 12, background: "linear-gradient(135deg, #16a34a, #22c55e)", border: "none", color: "#fff", padding: "9px 16px", borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  Plan dinner
-                </button>
-              </div>
-            )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 0 }}>
+            <MiniCard
+              icon={<IconCart />}
+              value={shoppingUnchecked}
+              label={`Shopping\n${shoppingStores} store${shoppingStores !== 1 ? "s" : ""}`}
+              onClick={() => onNavigate("shopping")}
+            />
+            <MiniCard
+              icon={<IconWrench />}
+              value={maintenanceDueCount}
+              label={"Maintenance\nthis month"}
+              onClick={() => onNavigate("maintenance")}
+            />
           </div>
 
-          {/* Upcoming calendar events */}
-          <div style={{ background: "rgba(255,255,255,0.95)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 20, padding: 22, boxShadow: "0 4px 16px rgba(22,163,74,0.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#166534" }}>📅 Upcoming</h3>
-              {upcomingEvents.length > 0 && (
-                <button onClick={() => onNavigate("calendar")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>View all →</button>
-              )}
-            </div>
-            {upcomingEvents.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {upcomingEvents.map(event => (
-                  <div key={event.uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#166534", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{event.title}</p>
-                      {event.location && <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>📍 {event.location}</p>}
-                    </div>
-                    <span style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap", flexShrink: 0 }}>{fmtDate(event.start)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ margin: 0, color: "#94a3b8", fontSize: 14 }}>No upcoming events. Import a calendar to see your schedule.</p>
-            )}
-          </div>
+          <GardenCard
+            plants={plants}
+            onNavigate={onNavigate}
+            onWaterPlant={onWaterPlant}
+          />
         </div>
-
       </div>
     </div>
   );

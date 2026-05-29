@@ -12,6 +12,35 @@ const isPdfFile = (file) => {
   return file.type?.toLowerCase().includes("pdf") || file.name?.toLowerCase().endsWith(".pdf");
 };
 
+// Map displayStatus → Garden color tokens
+const gardenStatusStyle = (status) => {
+  switch (status) {
+    case "overdue":  return { bg: "var(--g-brick-bg)", color: "var(--g-brick)", label: "Overdue" };
+    case "paid":     return { bg: "var(--g-hair2)", color: "var(--g-muted)", label: "Paid" };
+    case "due soon": return { bg: "var(--g-honey-bg)", color: "var(--g-honey)", label: "Due soon" };
+    default:         return { bg: "var(--g-sky-bg)", color: "var(--g-sky)", label: "Unpaid" };
+  }
+};
+
+// Icon square bg by status
+const iconBg = (status) => {
+  switch (status) {
+    case "overdue":  return "var(--g-brick-bg)";
+    case "paid":     return "var(--g-hair2)";
+    case "due soon": return "var(--g-honey-bg)";
+    default:         return "var(--g-sky-bg)";
+  }
+};
+
+const iconColor = (status) => {
+  switch (status) {
+    case "overdue":  return "var(--g-brick)";
+    case "paid":     return "var(--g-muted)";
+    case "due soon": return "var(--g-honey)";
+    default:         return "var(--g-sky)";
+  }
+};
+
 export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, showToast }) {
   const [filter, setFilter] = useState(STATUSES.ALL);
   const [search, setSearch] = useState("");
@@ -183,7 +212,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
   const onDrop = (e) => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files[0]); };
 
   const parseAmount = (text) => {
-    let s = text.replace(/[€$£ ]/g, "").trim();
+    let s = text.replace(/[€$£ ]/g, "").trim();
     if (s.includes(".") && s.includes(",")) {
       // Both separators: whichever comes last is the decimal separator
       if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
@@ -326,8 +355,14 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
   };
 
   const totalUnpaid = invoices.filter((i) => displayStatus(i) !== "paid").reduce((a, i) => a + parseFloat(i.amount || 0), 0);
-  const totalPaid = invoices.filter((i) => i.status === "paid").reduce((a, i) => a + parseFloat(i.amount || 0), 0);
-  const overdueCount = invoices.filter((i) => displayStatus(i) === "overdue").length;
+  const avgMonthly = invoices.length > 0
+    ? invoices.reduce((a, i) => a + parseFloat(i.amount || 0), 0) / Math.max(1, new Set(invoices.map(i => (i.dueDate || "").slice(0, 7))).size)
+    : 0;
+  const ytdTotal = (() => {
+    const year = new Date().getFullYear();
+    return invoices.filter(i => (i.dueDate || "").startsWith(String(year))).reduce((a, i) => a + parseFloat(i.amount || 0), 0);
+  })();
+
   const q = search.trim().toLowerCase();
   const filtered = invoices
     .filter((inv) => filter === STATUSES.ALL || displayStatus(inv) === filter)
@@ -335,94 +370,149 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
   const isPdf = isPdfFile(form?.file);
 
   return (
-    <>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 32 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#166534" }}>Invoice Tracker</h2>
-          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: 16 }}>Track household bills, due dates, and payment status.</p>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--g-sage)", textTransform: "uppercase", letterSpacing: 1 }}>Bills &amp; subscriptions</p>
+          <h1 style={{ margin: "4px 0 0", fontSize: 44, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)", lineHeight: 1.1 }}>Invoice Tracker</h1>
         </div>
-        <button onClick={openNew} style={{ background: "linear-gradient(135deg, #16a34a, #22c55e)", border: "none", color: "#fff", padding: "14px 24px", borderRadius: 16, fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(22,163,74,0.3)" }}>
-          + Add Invoice
+        <button onClick={openNew} style={{
+          background: "var(--g-sage-bg)", border: "none", color: "var(--g-sage-dark)",
+          padding: "12px 22px", borderRadius: 12, fontSize: 14, fontWeight: 600,
+          cursor: "pointer", fontFamily: "var(--g-sans)", marginTop: 8,
+        }}>
+          + New invoice
         </button>
       </div>
 
-      {/* ── Stats ──────────────────────────────────────────────────────────── */}
-      <div className="stats-grid-3" style={{ marginBottom: 32 }}>
+      {/* ── Stats row ──────────────────────────────────────────────────────── */}
+      <div className="stats-grid-3">
         {[
-          { label: "Total unpaid", value: fmt(totalUnpaid), color: "#16a34a" },
-          { label: "Total paid", value: fmt(totalPaid), color: "#22c55e" },
-          { label: "Overdue", value: overdueCount, color: "#dc2626" },
+          { label: "Outstanding", value: fmt(totalUnpaid), underline: "var(--g-brick)" },
+          { label: "Avg monthly", value: fmt(avgMonthly), underline: "var(--g-honey)" },
+          { label: "YTD total", value: fmt(ytdTotal), underline: "var(--g-sage)" },
         ].map((s) => (
-          <div key={s.label} style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 20, padding: "24px", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
-            <p style={{ margin: 0, fontSize: 13, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{s.label}</p>
-            <p style={{ margin: "8px 0 0", fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</p>
+          <div key={s.label} style={{ background: "var(--g-card)", borderRadius: 16, padding: "24px", boxShadow: "var(--g-shadow-sm)", position: "relative", overflow: "hidden" }}>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--g-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, fontFamily: "var(--g-sans)" }}>{s.label}</p>
+            <p style={{ margin: "10px 0 0", fontSize: 30, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)", lineHeight: 1 }}>{s.value}</p>
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: s.underline }} />
           </div>
         ))}
       </div>
 
-      {/* ── Filters ────────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap", alignItems: "center" }}>
+      {/* ── Filters + Search ───────────────────────────────────────────────── */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {[["All", STATUSES.ALL], ["Unpaid", STATUSES.UNPAID], ["Paid", STATUSES.PAID], ["Overdue", STATUSES.OVERDUE]].map(([label, val]) => (
           <button key={val} onClick={() => { setFilter(val); setSearch(""); }} style={{
-            padding: "12px 20px", borderRadius: 12,
-            border: filter === val ? "2px solid #16a34a" : "2px solid rgba(34,197,94,0.2)",
-            background: filter === val ? "linear-gradient(135deg, #dcfce7, #bbf7d0)" : "rgba(255,255,255,0.8)",
-            color: filter === val ? "#166534" : "#64748b",
-            fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all 0.2s ease",
+            padding: "8px 18px", borderRadius: 999,
+            border: filter === val ? "1.5px solid var(--g-sage)" : "1.5px solid var(--g-hair)",
+            background: filter === val ? "var(--g-sage-bg)" : "transparent",
+            color: filter === val ? "var(--g-sage-dark)" : "var(--g-muted)",
+            fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--g-sans)",
+            transition: "all 0.15s ease",
           }}>{label}</button>
         ))}
-        <input
-          type="search"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search vendor, notes…"
-          style={{
-            marginLeft: "auto",
-            background: "rgba(255,255,255,0.95)",
-            border: "1px solid rgba(34,197,94,0.2)",
-            borderRadius: 14,
-            padding: "10px 16px",
-            color: "#134e4a",
-            fontSize: 14,
-            minWidth: 200,
-            outline: "none",
-          }}
-        />
+        <div style={{ marginLeft: "auto", position: "relative", display: "flex", alignItems: "center" }}>
+          <svg style={{ position: "absolute", left: 12, pointerEvents: "none", color: "var(--g-mute2)" }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input
+            type="search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search vendor, notes…"
+            style={{
+              background: "var(--g-card)",
+              border: "1px solid var(--g-hair)",
+              borderRadius: 12,
+              padding: "9px 14px 9px 34px",
+              color: "var(--g-ink)",
+              fontSize: 13.5,
+              minWidth: 200,
+              outline: "none",
+              fontFamily: "var(--g-sans)",
+            }}
+          />
+        </div>
       </div>
 
       {/* ── Invoice list ───────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ background: "var(--g-card)", borderRadius: 16, boxShadow: "var(--g-shadow-sm)", overflow: "hidden" }}>
         {filtered.length === 0 && (
-          <div style={{ textAlign: "center", color: "#64748b", padding: "48px 0", fontSize: 16 }}>No invoices found.</div>
+          <div style={{ textAlign: "center", color: "var(--g-muted)", padding: "48px 0", fontSize: 15, fontFamily: "var(--g-sans)" }}>No invoices found.</div>
         )}
-        {filtered.map((inv) => {
-          const s = statusStyle(displayStatus(inv));
+        {filtered.map((inv, idx) => {
+          const status = displayStatus(inv);
+          const s = gardenStatusStyle(status);
+          const isOverdue = status === "overdue";
           return (
-            <div key={inv.id} style={{ background: "linear-gradient(135deg, #f8fafc, #f1f5f9)", border: "1px solid rgba(34,197,94,0.1)", borderRadius: 16, padding: "20px 24px", display: "flex", alignItems: "center", gap: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.05)", flexWrap: "wrap" }}>
+            <div key={inv.id} style={{
+              display: "flex", alignItems: "center", gap: 16, padding: "16px 24px", flexWrap: "wrap",
+              borderTop: idx === 0 ? "none" : "1px solid var(--g-hair2)",
+            }}>
+              {/* Status icon square */}
+              <div style={{
+                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                background: iconBg(status),
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconColor(status)} strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </div>
+
+              {/* Name + meta */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, fontSize: 18, color: "#166534" }}>{inv.vendor}</span>
-                  <span style={{ background: s.bg, color: s.color, fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 20, textTransform: "uppercase", letterSpacing: 0.5 }}>{s.label}</span>
-                  {inv.category && <span style={{ fontSize: 12, color: "#64748b", background: "rgba(100,116,139,0.1)", padding: "4px 10px", borderRadius: 20 }}>{inv.category}</span>}
-                  {inv.file && <span style={{ fontSize: 12, color: "#3b82f6", background: "rgba(59,130,246,0.1)", padding: "4px 10px", borderRadius: 20 }}>📎 {inv.file.name}</span>}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, fontSize: 15, color: "var(--g-ink)", fontFamily: "var(--g-sans)" }}>{inv.vendor}</span>
+                  <span style={{
+                    background: s.bg, color: s.color,
+                    fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
+                    fontFamily: "var(--g-sans)",
+                  }}>{s.label}</span>
+                  {inv.category && (
+                    <span style={{ fontSize: 12, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>{inv.category}</span>
+                  )}
                 </div>
-                <div style={{ display: "flex", gap: 24, marginTop: 8, fontSize: 14, color: "#64748b", flexWrap: "wrap" }}>
-                  <span>#{inv.invoiceNo || "—"}</span>
-                  <span>Due: {fmtDate(inv.dueDate)}</span>
-                  {inv.notes && <span>· {inv.notes}</span>}
+                <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 13, color: "var(--g-muted)", flexWrap: "wrap", fontFamily: "var(--g-sans)" }}>
+                  {inv.invoiceNo && <span>#{inv.invoiceNo}</span>}
+                  <span>Due {fmtDate(inv.dueDate)}</span>
+                  {inv.notes && <span>{inv.notes}</span>}
                 </div>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#166534", minWidth: 100, textAlign: "right" }}>{fmt(inv.amount)}</div>
+
+              {/* Amount */}
+              <div style={{ fontSize: 22, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)", minWidth: 80, textAlign: "right" }}>
+                {fmt(inv.amount)}
+              </div>
+
+              {/* Actions */}
               <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-                <button onClick={() => togglePaid(inv.id)} title={inv.status === "paid" ? "Mark unpaid" : "Mark paid"} style={{ background: inv.status === "paid" ? "rgba(34,197,94,0.1)" : "rgba(22,163,74,0.1)", border: "1px solid rgba(34,197,94,0.2)", color: "#16a34a", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 16 }}>
-                  {inv.status === "paid" ? "✓" : "○"}
+                <button
+                  onClick={() => togglePaid(inv.id)}
+                  title={inv.status === "paid" ? "Mark unpaid" : "Mark paid"}
+                  style={{
+                    background: isOverdue ? "var(--g-sage)" : "var(--g-sage-bg)",
+                    border: "none",
+                    color: isOverdue ? "#fff" : "var(--g-sage-dark)",
+                    borderRadius: 10, padding: "7px 14px", cursor: "pointer",
+                    fontSize: 13, fontWeight: 600, fontFamily: "var(--g-sans)",
+                  }}
+                >
+                  {inv.status === "paid" ? "Paid ✓" : "Mark paid"}
                 </button>
                 {inv.file && (
-                  <button onClick={() => setViewInvoice(inv)} title="View document" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", color: "#3b82f6", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 14 }}>👁</button>
+                  <button onClick={() => setViewInvoice(inv)} title="View document" style={iconBtnStyle}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
                 )}
-                <button onClick={() => openEdit(inv)} style={{ background: "rgba(255,255,255,0.8)", border: "1px solid rgba(34,197,94,0.1)", color: "#64748b", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 14 }}>✏️</button>
-                <button onClick={() => setDeleteId(inv.id)} style={{ background: "rgba(252,165,165,0.1)", border: "1px solid rgba(252,165,165,0.2)", color: "#dc2626", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 14 }}>🗑</button>
+                <button onClick={() => openEdit(inv)} title="Edit" style={iconBtnStyle}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button onClick={() => setDeleteId(inv.id)} title="Delete" style={{ ...iconBtnStyle, color: "var(--g-brick)" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
               </div>
             </div>
           );
@@ -433,7 +523,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       {form && step === "upload" && (
         <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && closeModal()}>
           <div className="modal-box" style={{ maxWidth: 480 }}>
-            <h2 style={{ margin: "0 0 24px", fontSize: 20, fontWeight: 800, color: "#166534" }}>Add Invoice</h2>
+            <h2 style={{ margin: "0 0 24px", fontSize: 22, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)" }}>Add Invoice</h2>
             <input ref={fileRef} type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={onFileInput} style={{ display: "none" }} />
             <div
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -441,19 +531,19 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
               onDrop={onDrop}
               onClick={() => fileRef.current.click()}
               style={{
-                border: `2px dashed ${isDragging ? "#16a34a" : "rgba(34,197,94,0.35)"}`,
-                background: isDragging ? "rgba(220,252,231,0.6)" : "rgba(255,255,255,0.8)",
-                borderRadius: 16, padding: "64px 24px", textAlign: "center", cursor: "pointer",
+                border: `2px dashed ${isDragging ? "var(--g-sage)" : "var(--g-hair)"}`,
+                background: isDragging ? "var(--g-sage-bg)" : "var(--g-bg)",
+                borderRadius: 20, padding: "64px 24px", textAlign: "center", cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
             >
-              <div style={{ fontSize: 56, marginBottom: 16, lineHeight: 1 }}>📄</div>
-              <p style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#166534" }}>Drop your invoice here</p>
-              <p style={{ margin: "8px 0 0", fontSize: 14, color: "#64748b" }}>or click to browse</p>
-              <p style={{ margin: "16px 0 0", fontSize: 12, color: "#94a3b8" }}>PDF · JPEG · PNG · WebP</p>
+              <div style={{ fontSize: 48, marginBottom: 16, lineHeight: 1 }}>📄</div>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--g-ink)", fontFamily: "var(--g-sans)" }}>Drop your invoice here</p>
+              <p style={{ margin: "8px 0 0", fontSize: 14, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>or click to browse</p>
+              <p style={{ margin: "14px 0 0", fontSize: 12, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>PDF · JPEG · PNG · WebP</p>
             </div>
             <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={closeModal} style={{ ...cancelBtnStyle, flex: "none", padding: "12px 28px" }}>Cancel</button>
+              <button onClick={closeModal} style={cancelBtnStyle}>Cancel</button>
             </div>
           </div>
         </div>
@@ -463,9 +553,9 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       {form && step === "edit" && (
         <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && closeModal()}>
           <div style={{
-            background: "#f8fafc",
-            borderRadius: 24,
-            boxShadow: "0 24px 80px rgba(0,0,0,0.2)",
+            background: "var(--g-bg)",
+            borderRadius: 20,
+            boxShadow: "0 24px 80px rgba(0,0,0,0.18)",
             width: "min(98vw, 1160px)",
             height: "min(94vh, 860px)",
             display: "flex",
@@ -473,9 +563,15 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
             overflow: "hidden",
           }}>
             {/* Header */}
-            <div style={{ padding: "18px 28px", borderBottom: "1px solid rgba(34,197,94,0.15)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "rgba(255,255,255,0.8)" }}>
-              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#166534" }}>{form.id ? "Edit Invoice" : "Add Invoice"}</h2>
-              <button onClick={closeModal} style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#94a3b8", lineHeight: 1, padding: "0 2px" }}>×</button>
+            <div style={{
+              padding: "16px 24px", borderBottom: "1px solid var(--g-hair)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              flexShrink: 0, background: "var(--g-card)",
+            }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)" }}>
+                {form.id ? "Edit Invoice" : "Add Invoice"}
+              </h2>
+              <button onClick={closeModal} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--g-mute2)", lineHeight: 1, padding: "0 2px" }}>×</button>
             </div>
 
             {/* Body */}
@@ -490,7 +586,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
                       {isPdf ? (
                         <>
                           {pdfLoading && (
-                            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 14 }}>
+                            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--g-muted)", fontSize: 14, fontFamily: "var(--g-sans)" }}>
                               Rendering…
                             </div>
                           )}
@@ -523,22 +619,22 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
                               width: `${(word.width / previewDims.width) * 100}%`,
                               height: `${(word.height / previewDims.height) * 100}%`,
                               cursor: "pointer",
-                              background: isSelected ? "rgba(22,163,74,0.35)" : "rgba(34,197,94,0)",
-                              border: isSelected ? "2px solid #16a34a" : "1px solid transparent",
+                              background: isSelected ? "rgba(90,122,94,0.32)" : "rgba(90,122,94,0)",
+                              border: isSelected ? "2px solid var(--g-sage)" : "1px solid transparent",
                               borderRadius: 2,
                               boxSizing: "border-box",
                               transition: "background 0.08s ease",
                               zIndex: 1,
                             }}
-                            onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(34,197,94,0.2)"; }}
-                            onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(34,197,94,0)"; }}
+                            onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(90,122,94,0.18)"; }}
+                            onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(90,122,94,0)"; }}
                           />
                         );
                       })}
 
                       {/* Hint when words are ready */}
                       {previewDims && docWords.length > 0 && !selectedWord && (
-                        <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 12, padding: "6px 14px", borderRadius: 20, pointerEvents: "none", whiteSpace: "nowrap" }}>
+                        <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "rgba(31,42,36,0.72)", color: "#fff", fontSize: 12, padding: "6px 14px", borderRadius: 20, pointerEvents: "none", whiteSpace: "nowrap", fontFamily: "var(--g-sans)" }}>
                           Click any value to assign it to a field
                         </div>
                       )}
@@ -546,10 +642,10 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
                   </div>
 
                   {/* File bar */}
-                  <div style={{ padding: "10px 16px", background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-                    <span style={{ flex: 1, fontSize: 12, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {form.file.name}</span>
+                  <div style={{ padding: "10px 16px", background: "rgba(31,42,36,0.55)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                    <span style={{ flex: 1, fontSize: 12, color: "var(--g-mute2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--g-sans)" }}>📎 {form.file.name}</span>
                     <input ref={fileRef} type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={onFileInput} style={{ display: "none" }} />
-                    <button onClick={() => fileRef.current.click()} style={{ fontSize: 12, color: "#22c55e", background: "none", border: "none", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    <button onClick={() => fileRef.current.click()} style={{ fontSize: 12, color: "var(--g-sage-bg)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap", fontFamily: "var(--g-sans)" }}>
                       Change file
                     </button>
                   </div>
@@ -560,11 +656,14 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
                   <input ref={fileRef} type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={onFileInput} style={{ display: "none" }} />
                   <button
                     onClick={() => fileRef.current.click()}
-                    style={{ border: "2px dashed rgba(34,197,94,0.4)", background: "transparent", borderRadius: 16, padding: "40px 48px", cursor: "pointer", textAlign: "center" }}
+                    style={{
+                      border: "2px dashed var(--g-hair)", background: "transparent",
+                      borderRadius: 20, padding: "40px 48px", cursor: "pointer", textAlign: "center",
+                    }}
                   >
                     <div style={{ fontSize: 44, marginBottom: 12 }}>📄</div>
-                    <p style={{ margin: 0, color: "#e2e8f0", fontWeight: 700, fontSize: 15 }}>Attach a document</p>
-                    <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13 }}>PDF · JPEG · PNG · WebP</p>
+                    <p style={{ margin: 0, color: "var(--g-bg)", fontWeight: 600, fontSize: 15, fontFamily: "var(--g-sans)" }}>Attach a document</p>
+                    <p style={{ margin: "6px 0 0", color: "var(--g-muted)", fontSize: 13, fontFamily: "var(--g-sans)" }}>PDF · JPEG · PNG · WebP</p>
                   </button>
                 </div>
               )}
@@ -574,36 +673,36 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
 
                 {/* Selected word → field assignment */}
                 {selectedWord ? (
-                  <div style={{ padding: "16px", background: "linear-gradient(135deg, #dcfce7, #bbf7d0)", border: "1.5px solid #16a34a", borderRadius: 14 }}>
-                    <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: 0.5 }}>Assign to field</p>
-                    <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#14532d", wordBreak: "break-all" }}>"{selectedWord.text}"</p>
+                  <div style={{ padding: "14px 16px", background: "var(--g-sage-bg)", border: "1.5px solid var(--g-sage)", borderRadius: 12 }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "var(--g-sage-dark)", textTransform: "uppercase", letterSpacing: 0.5, fontFamily: "var(--g-sans)" }}>Assign to field</p>
+                    <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, color: "var(--g-ink)", wordBreak: "break-all", fontFamily: "var(--g-sans)" }}>"{selectedWord.text}"</p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       {FIELDS.map(([label, field]) => {
                         const filled = form[field] !== "" && form[field] !== null && form[field] !== undefined;
                         return (
                           <button key={field} onClick={() => fillField(field, selectedWord.text)} style={filled ? {
-                            padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
-                            background: "rgba(220,252,231,0.9)", border: "1.5px solid #16a34a", color: "#166534",
-                            boxShadow: "none",
+                            padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                            background: "var(--g-card)", border: "1.5px solid var(--g-sage)", color: "var(--g-sage-dark)",
+                            fontFamily: "var(--g-sans)",
                           } : {
-                            padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
-                            background: "linear-gradient(135deg, #16a34a, #22c55e)", border: "none", color: "#fff",
-                            boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
+                            padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                            background: "var(--g-sage)", border: "none", color: "#fff",
+                            fontFamily: "var(--g-sans)",
                           }}>
                             {filled ? "✓" : "→"} {label}
                           </button>
                         );
                       })}
                       <button onClick={() => setSelectedWord(null)}
-                        style={{ padding: "8px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer", background: "rgba(255,255,255,0.8)", border: "1px solid rgba(34,197,94,0.3)", color: "#64748b" }}>
+                        style={{ padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", background: "var(--g-card)", border: "1px solid var(--g-hair)", color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>
                         Cancel
                       </button>
                     </div>
                   </div>
                 ) : docWords.length > 0 ? (
-                  <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", textAlign: "center", padding: "8px 0" }}>← Click a value in the document</p>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--g-muted)", textAlign: "center", padding: "8px 0", fontFamily: "var(--g-sans)" }}>← Click a value in the document</p>
                 ) : pdfLoading ? (
-                  <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", textAlign: "center", padding: "8px 0" }}>Reading document…</p>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--g-muted)", textAlign: "center", padding: "8px 0", fontFamily: "var(--g-sans)" }}>Reading document…</p>
                 ) : null}
 
                 {/* Form fields */}
@@ -645,7 +744,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
             </div>
 
             {/* Footer */}
-            <div style={{ padding: "14px 28px", borderTop: "1px solid rgba(34,197,94,0.15)", display: "flex", gap: 12, flexShrink: 0, background: "rgba(255,255,255,0.8)" }}>
+            <div style={{ padding: "14px 24px", borderTop: "1px solid var(--g-hair)", display: "flex", gap: 12, flexShrink: 0, background: "var(--g-card)" }}>
               <button onClick={closeModal} style={cancelBtnStyle}>Cancel</button>
               <button onClick={saveForm} style={primaryBtnStyle}>{form.id ? "Save changes" : "Add invoice"}</button>
             </div>
@@ -657,30 +756,30 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       {viewInvoice && (() => {
         const src = viewInvoice.file?.path || viewInvoice.file?.data || null;
         const inv = viewInvoice;
-        const s = statusStyle(displayStatus(inv));
+        const s = gardenStatusStyle(displayStatus(inv));
         return (
           <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setViewInvoice(null)}>
             <div style={{
-              background: "#f8fafc", borderRadius: 24, boxShadow: "0 24px 80px rgba(0,0,0,0.2)",
+              background: "var(--g-bg)", borderRadius: 20, boxShadow: "0 24px 80px rgba(0,0,0,0.18)",
               width: "min(98vw, 1000px)", height: "min(96vh, 920px)",
               display: "flex", flexDirection: "column", overflow: "hidden",
             }}>
               {/* Header */}
-              <div style={{ padding: "16px 24px", borderBottom: "1px solid rgba(34,197,94,0.15)", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "rgba(255,255,255,0.9)" }}>
+              <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--g-hair)", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "var(--g-card)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 800, fontSize: 17, color: "#166534" }}>{inv.vendor}</span>
-                    <span style={{ background: s.bg, color: s.color, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, textTransform: "uppercase", letterSpacing: 0.5 }}>{s.label}</span>
-                    {inv.category && <span style={{ fontSize: 11, color: "#64748b", background: "rgba(100,116,139,0.1)", padding: "3px 8px", borderRadius: 20 }}>{inv.category}</span>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, fontSize: 16, color: "var(--g-ink)", fontFamily: "var(--g-sans)" }}>{inv.vendor}</span>
+                    <span style={{ background: s.bg, color: s.color, fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 999, fontFamily: "var(--g-sans)" }}>{s.label}</span>
+                    {inv.category && <span style={{ fontSize: 12, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>{inv.category}</span>}
                   </div>
-                  <div style={{ display: "flex", gap: 20, marginTop: 4, fontSize: 13, color: "#64748b", flexWrap: "wrap" }}>
-                    <span>#{inv.invoiceNo || "—"}</span>
+                  <div style={{ display: "flex", gap: 20, marginTop: 4, fontSize: 13, color: "var(--g-muted)", flexWrap: "wrap", fontFamily: "var(--g-sans)" }}>
+                    {inv.invoiceNo && <span>#{inv.invoiceNo}</span>}
                     <span>Due: {fmtDate(inv.dueDate)}</span>
-                    <span style={{ fontWeight: 700, color: "#166534" }}>{fmt(inv.amount)}</span>
-                    {inv.structuredMessage && <span>📋 {inv.structuredMessage}</span>}
+                    <span style={{ fontWeight: 400, fontFamily: "var(--g-serif)", fontSize: 16, color: "var(--g-ink)" }}>{fmt(inv.amount)}</span>
+                    {inv.structuredMessage && <span>{inv.structuredMessage}</span>}
                   </div>
                 </div>
-                <button onClick={() => setViewInvoice(null)} style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#94a3b8", lineHeight: 1, flexShrink: 0 }}>×</button>
+                <button onClick={() => setViewInvoice(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--g-mute2)", lineHeight: 1, flexShrink: 0 }}>×</button>
               </div>
 
               {/* PDF / image */}
@@ -689,15 +788,15 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
                   <iframe
                     src={src}
                     title={inv.file.name}
-                    style={{ flex: 1, border: "none", background: "#1e293b" }}
+                    style={{ flex: 1, border: "none", background: "var(--g-ink2)" }}
                   />
                 ) : (
-                  <div style={{ flex: 1, overflow: "auto", background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                  <div style={{ flex: 1, overflow: "auto", background: "var(--g-ink2)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
                     <img src={src} alt={inv.file.name} style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8, objectFit: "contain" }} />
                   </div>
                 )
               ) : (
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 15 }}>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--g-muted)", fontSize: 15, fontFamily: "var(--g-sans)" }}>
                   File not available for preview
                 </div>
               )}
@@ -710,21 +809,45 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       {deleteId && (
         <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setDeleteId(null)}>
           <div className="modal-box" style={{ maxWidth: 400, textAlign: "center" }}>
-            <p style={{ fontSize: 18, marginBottom: 24, color: "#166534" }}>Delete this invoice? This cannot be undone.</p>
+            <p style={{ fontSize: 17, marginBottom: 24, color: "var(--g-ink)", fontFamily: "var(--g-sans)" }}>Delete this invoice? This cannot be undone.</p>
             <div style={{ display: "flex", gap: 12 }}>
               <button onClick={() => setDeleteId(null)} style={cancelBtnStyle}>Cancel</button>
-              <button onClick={confirmDelete} style={{ ...cancelBtnStyle, background: "rgba(252,165,165,0.1)", border: "1px solid rgba(252,165,165,0.3)", color: "#dc2626" }}>Delete</button>
+              <button onClick={confirmDelete} style={{ ...cancelBtnStyle, background: "var(--g-brick-bg)", border: "1px solid var(--g-brick)", color: "var(--g-brick)" }}>Delete</button>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
-const labelStyle = { fontSize: 13, color: "#4b5563", display: "block", marginBottom: 5, fontWeight: 600 };
-const inputStyle = { width: "100%", background: "rgba(255,255,255,0.9)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 10, padding: "10px 14px", color: "#166534", fontSize: 14, boxSizing: "border-box", transition: "all 0.2s ease" };
-const inputStyleFilled = { ...inputStyle, background: "rgba(220,252,231,0.7)", border: "1.5px solid #16a34a" };
+const labelStyle = {
+  fontSize: 12, color: "var(--g-muted)", display: "block", marginBottom: 5,
+  fontWeight: 600, fontFamily: "var(--g-sans)", textTransform: "uppercase", letterSpacing: 0.4,
+};
+const inputStyle = {
+  width: "100%", background: "var(--g-card)", border: "1px solid var(--g-hair)",
+  borderRadius: 10, padding: "10px 14px", color: "var(--g-ink)", fontSize: 14,
+  boxSizing: "border-box", transition: "border-color 0.15s ease", fontFamily: "var(--g-sans)",
+  outline: "none",
+};
+const inputStyleFilled = {
+  ...inputStyle,
+  background: "var(--g-sage-bg)", border: "1.5px solid var(--g-sage)",
+};
 const fieldStyle = (value) => (value !== "" && value !== null && value !== undefined) ? inputStyleFilled : inputStyle;
-const cancelBtnStyle = { flex: 1, padding: "13px", background: "rgba(255,255,255,0.9)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 12, color: "#64748b", cursor: "pointer", fontSize: 15, fontWeight: 600 };
-const primaryBtnStyle = { flex: 2, padding: "13px", background: "linear-gradient(135deg, #16a34a, #22c55e)", border: "none", borderRadius: 12, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, boxShadow: "0 4px 12px rgba(22,163,74,0.3)" };
+const cancelBtnStyle = {
+  flex: 1, padding: "12px", background: "var(--g-card)", border: "1px solid var(--g-hair)",
+  borderRadius: 10, color: "var(--g-muted)", cursor: "pointer", fontSize: 14,
+  fontWeight: 600, fontFamily: "var(--g-sans)",
+};
+const primaryBtnStyle = {
+  flex: 2, padding: "12px", background: "var(--g-sage)", border: "none",
+  borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer",
+  fontSize: 14, fontFamily: "var(--g-sans)",
+};
+const iconBtnStyle = {
+  background: "var(--g-hair2)", border: "1px solid var(--g-hair)", color: "var(--g-muted)",
+  borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex",
+  alignItems: "center", justifyContent: "center",
+};

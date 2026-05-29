@@ -9,23 +9,31 @@ const CAT_ICONS = {
   Insurance: "🛡️", Other: "📋",
 };
 
-const labelStyle = { fontSize: 14, color: "#4b5563", display: "block", marginBottom: 6, fontWeight: 600 };
-const inputStyle = {
-  width: "100%", background: "rgba(255,255,255,0.95)", border: "1px solid rgba(0,0,0,0.12)",
-  borderRadius: 12, padding: "11px 14px", fontSize: 15, fontFamily: "inherit", color: "#111827",
+// Deterministic avatar color per category
+const CAT_AVATAR_COLORS = {
+  Plumber: { bg: "var(--g-sky-bg)", color: "var(--g-sky)" },
+  Electrician: { bg: "var(--g-honey-bg)", color: "var(--g-honey)" },
+  Doctor: { bg: "var(--g-brick-bg)", color: "var(--g-brick)" },
+  Dentist: { bg: "var(--g-sky-bg)", color: "var(--g-sky)" },
+  Vet: { bg: "var(--g-sage-bg)", color: "var(--g-sage-dark)" },
+  Locksmith: { bg: "var(--g-honey-bg)", color: "var(--g-honey)" },
+  Handyman: { bg: "var(--g-sage-bg)", color: "var(--g-sage-dark)" },
+  Landlord: { bg: "var(--g-brick-bg)", color: "var(--g-brick)" },
+  Insurance: { bg: "var(--g-sky-bg)", color: "var(--g-sky)" },
+  Other: { bg: "var(--g-hair2)", color: "var(--g-muted)" },
 };
-const btnPrimary = {
-  padding: "10px 20px", background: "linear-gradient(135deg, var(--accent, #16a34a), #22c55e)",
-  color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14,
-  cursor: "pointer", fontFamily: "inherit",
-};
-const btnSecondary = {
-  padding: "10px 20px", background: "#f1f5f9", color: "#374151",
-  border: "1px solid #e5e7eb", borderRadius: 12, fontWeight: 600, fontSize: 14,
-  cursor: "pointer", fontFamily: "inherit",
-};
+const DEFAULT_AVATAR = { bg: "var(--g-hair2)", color: "var(--g-muted)" };
+
+const labelStyle = { fontSize: 12, color: "var(--g-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" };
+const inputStyle = { width: "100%", background: "#fff", border: "1px solid var(--g-hair)", borderRadius: 12, padding: "11px 14px", fontSize: 14, fontFamily: "inherit", color: "var(--g-ink)", boxSizing: "border-box" };
+const btnPrimary = { padding: "10px 20px", background: "var(--g-sage)", color: "#fff", border: "none", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" };
+const btnSecondary = { padding: "10px 20px", background: "var(--g-bg)", color: "var(--g-ink2)", border: "1px solid var(--g-hair)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" };
 
 const EMPTY_FORM = { name: "", category: "Other", phone: "", email: "", address: "", notes: "" };
+
+const getInitials = (name) => {
+  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+};
 
 export default function HouseholdContacts({ contacts, setContacts, apiEnabled, showToast }) {
   const [catFilter, setCatFilter] = useState("All");
@@ -101,77 +109,114 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
   };
 
   const usedCats = [...new Set(contacts.map(c => c.category))].sort();
+  const filterCats = ["All", ...allCategories.filter(c => usedCats.includes(c) || DEFAULT_CATEGORIES.includes(c)), ...customCats.filter(c => !usedCats.includes(c) && !DEFAULT_CATEGORIES.includes(c))].filter((c, i, arr) => arr.indexOf(c) === i);
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "28px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#111827" }}>📞 Household Contacts</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--g-sage)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Household</p>
+          <h1 style={{ margin: 0, fontSize: 44, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)", lineHeight: 1.1 }}>Contacts</h1>
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={btnSecondary} onClick={() => setShowCatManager(true)}>Categories</button>
           <button style={btnPrimary} onClick={openNew}>+ Add Contact</button>
         </div>
       </div>
 
-      {/* Search + filter */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+      {/* Search bar */}
+      <div style={{ background: "var(--g-card)", borderRadius: 16, padding: "12px 16px", boxShadow: "var(--g-shadow-sm)", display: "flex", alignItems: "center", gap: 10, maxWidth: 360 }}>
+        <span style={{ fontSize: 16, color: "var(--g-mute2)" }}>🔍</span>
         <input
-          style={{ ...inputStyle, flex: "1 1 200px", maxWidth: 300 }}
-          placeholder="Search contacts…"
+          style={{ border: "none", outline: "none", background: "transparent", fontSize: 14, color: "var(--g-ink)", fontFamily: "inherit", width: "100%" }}
+          placeholder="Search contacts..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {["All", ...allCategories.filter(c => usedCats.includes(c) || DEFAULT_CATEGORIES.includes(c)), ...customCats.filter(c => !usedCats.includes(c) && !DEFAULT_CATEGORIES.includes(c))].filter((c, i, arr) => arr.indexOf(c) === i).map(c => (
-            <button
-              key={c}
-              onClick={() => setCatFilter(c)}
-              style={{
-                padding: "8px 16px", borderRadius: 20, border: "none", cursor: "pointer",
-                fontFamily: "inherit", fontWeight: 600, fontSize: 13,
-                background: catFilter === c ? "var(--accent, #16a34a)" : "#f1f5f9",
-                color: catFilter === c ? "#fff" : "#374151",
-              }}
-            >{CAT_ICONS[c] || ""} {c}</button>
-          ))}
-        </div>
+      </div>
+
+      {/* Category filter pills */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {filterCats.map(c => (
+          <button
+            key={c}
+            onClick={() => setCatFilter(c)}
+            style={{
+              padding: "7px 16px", borderRadius: 999, border: catFilter === c ? "none" : "1px solid var(--g-hair)",
+              cursor: "pointer", fontFamily: "inherit", fontWeight: 600, fontSize: 13,
+              background: catFilter === c ? "var(--g-sage-bg)" : "var(--g-card)",
+              color: catFilter === c ? "var(--g-sage-dark)" : "var(--g-ink2)",
+            }}
+          >{CAT_ICONS[c] || ""} {c}</button>
+        ))}
       </div>
 
       {sorted.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>
+        <div style={{ background: "var(--g-card)", borderRadius: 20, padding: "60px 40px", boxShadow: "var(--g-shadow)", textAlign: "center", color: "var(--g-muted)", fontSize: 15 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📞</div>
           <p style={{ margin: 0 }}>No contacts yet. Click "+ Add Contact" to add one.</p>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
-          {sorted.map(contact => (
-            <div key={contact.id} style={{ background: "rgba(255,255,255,0.88)", borderRadius: 18, padding: 20, border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 2px 12px rgba(15,23,42,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                <span style={{ fontSize: 28 }}>{CAT_ICONS[contact.category] || "📋"}</span>
-                <span style={{ padding: "3px 10px", borderRadius: 8, background: "#f1f5f9", color: "#6b7280", fontSize: 12, fontWeight: 600 }}>{contact.category}</span>
+          {sorted.map(contact => {
+            const avatarColors = CAT_AVATAR_COLORS[contact.category] || DEFAULT_AVATAR;
+            return (
+              <div key={contact.id} style={{ background: "var(--g-card)", borderRadius: 20, padding: "20px", boxShadow: "var(--g-shadow)", display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Avatar + name */}
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: 16, flexShrink: 0,
+                    background: avatarColors.bg, color: avatarColors.color,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 18, fontWeight: 700, fontFamily: "var(--g-serif)",
+                  }}>
+                    {getInitials(contact.name)}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 400, fontSize: 17, color: "var(--g-ink)", fontFamily: "var(--g-serif)", lineHeight: 1.2 }}>{contact.name}</div>
+                    <div style={{ fontSize: 13, color: "var(--g-muted)", marginTop: 2 }}>{CAT_ICONS[contact.category] || "📋"} {contact.category}</div>
+                  </div>
+                </div>
+
+                {/* Category pill */}
+                <div style={{ alignSelf: "flex-start", padding: "4px 9px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, background: "var(--g-sage-bg)", color: "var(--g-sage-dark)" }}>{contact.category}</div>
+
+                {/* Contact info */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {contact.phone && (
+                    <a href={`tel:${contact.phone}`} style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--g-sky)", textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
+                      📱 {contact.phone}
+                    </a>
+                  )}
+                  {contact.email && (
+                    <a href={`mailto:${contact.email}`} style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--g-muted)", textDecoration: "none", fontSize: 13 }}>
+                      ✉️ {contact.email}
+                    </a>
+                  )}
+                  {contact.address && (
+                    <div style={{ fontSize: 13, color: "var(--g-mute2)" }}>📍 {contact.address}</div>
+                  )}
+                </div>
+
+                {contact.notes && (
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--g-muted)", borderTop: "1px solid var(--g-hair)", paddingTop: 10, lineHeight: 1.5 }}>{contact.notes}</p>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 8, marginTop: "auto", borderTop: "1px solid var(--g-hair2)", paddingTop: 12 }}>
+                  {contact.phone && (
+                    <a href={`tel:${contact.phone}`} style={{ ...btnSecondary, padding: "7px 14px", fontSize: 13, textDecoration: "none", flex: 1, textAlign: "center" }}>Call</a>
+                  )}
+                  {contact.email && (
+                    <a href={`mailto:${contact.email}`} style={{ ...btnSecondary, padding: "7px 14px", fontSize: 13, textDecoration: "none", flex: 1, textAlign: "center" }}>Email</a>
+                  )}
+                  <button onClick={() => openEdit(contact)} style={{ ...btnSecondary, padding: "7px 14px", fontSize: 13 }}>Edit</button>
+                  <button onClick={() => setDeleteId(contact.id)} style={{ padding: "7px 14px", background: "var(--g-brick-bg)", color: "var(--g-brick)", border: "1px solid var(--g-hair)", borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Del</button>
+                </div>
               </div>
-              <div style={{ fontWeight: 700, fontSize: 17, color: "#111827", marginBottom: 10 }}>{contact.name}</div>
-              {contact.phone && (
-                <a href={`tel:${contact.phone}`} style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--accent, #16a34a)", textDecoration: "none", fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-                  📱 {contact.phone}
-                </a>
-              )}
-              {contact.email && (
-                <a href={`mailto:${contact.email}`} style={{ display: "flex", alignItems: "center", gap: 8, color: "#6b7280", textDecoration: "none", fontSize: 13, marginBottom: 6 }}>
-                  ✉️ {contact.email}
-                </a>
-              )}
-              {contact.address && (
-                <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 6 }}>📍 {contact.address}</div>
-              )}
-              {contact.notes && (
-                <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280", borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>{contact.notes}</p>
-              )}
-              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                <button onClick={() => openEdit(contact)} style={{ padding: "6px 14px", background: "#f1f5f9", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
-                <button onClick={() => setDeleteId(contact.id)} style={{ padding: "6px 14px", background: "rgba(252,165,165,0.1)", borderRadius: 10, border: "1px solid rgba(220,38,38,0.2)", fontSize: 13, fontWeight: 600, color: "#dc2626", cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -179,7 +224,7 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
       {form && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && closeModal()}>
           <div className="modal-box" style={{ maxWidth: 480 }}>
-            <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 700 }}>{form.id ? "Edit Contact" : "Add Contact"}</h3>
+            <h3 style={{ margin: "0 0 24px", fontSize: 24, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>{form.id ? "Edit Contact" : "Add Contact"}</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div>
                 <label style={labelStyle}>Name *</label>
@@ -220,13 +265,13 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
       {showCatManager && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowCatManager(false)}>
           <div className="modal-box" style={{ maxWidth: 420 }}>
-            <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 700 }}>Manage Categories</h3>
+            <h3 style={{ margin: "0 0 24px", fontSize: 24, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Manage Categories</h3>
 
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Default</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--g-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Default</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {DEFAULT_CATEGORIES.map(c => (
-                  <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 10, background: "#f1f5f9", color: "#374151", fontSize: 13, fontWeight: 600 }}>
+                  <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999, background: "var(--g-bg)", color: "var(--g-ink2)", border: "1px solid var(--g-hair)", fontSize: 13, fontWeight: 600 }}>
                     {CAT_ICONS[c] || "📋"} {c}
                   </span>
                 ))}
@@ -235,12 +280,12 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
 
             {customCats.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Custom</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--g-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Custom</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {customCats.map(c => (
-                    <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: "#f1f5f9", color: "#374151", fontSize: 13, fontWeight: 600 }}>
+                    <span key={c} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 999, background: "var(--g-bg)", color: "var(--g-ink2)", border: "1px solid var(--g-hair)", fontSize: 13, fontWeight: 600 }}>
                       📋 {c}
-                      <button onClick={() => removeCustomCategory(c)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
+                      <button onClick={() => removeCustomCategory(c)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--g-mute2)", fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
                     </span>
                   ))}
                 </div>
@@ -272,10 +317,9 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
       {deleteId && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setDeleteId(null)}>
           <div className="modal-box" style={{ maxWidth: 360, textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🗑️</div>
-            <h3 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 700 }}>Delete Contact?</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 22, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Delete Contact?</h3>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 24 }}>
-              <button onClick={() => confirmDelete(deleteId)} style={{ padding: "10px 20px", background: "rgba(252,165,165,0.12)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+              <button onClick={() => confirmDelete(deleteId)} style={{ padding: "10px 20px", background: "var(--g-brick-bg)", color: "var(--g-brick)", border: "1px solid var(--g-hair)", borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
               <button style={btnSecondary} onClick={() => setDeleteId(null)}>Cancel</button>
             </div>
           </div>
