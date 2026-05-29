@@ -107,6 +107,27 @@ html, body, #root {
   gap: 32px;
 }
 
+.week-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+}
+
+.cookbook-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.recipe-sidebar {
+  width: min(480px, 46vw);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
 .cal-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
@@ -382,11 +403,16 @@ html, body, #root {
   .meal-grid       { grid-template-columns: 1fr; }
   .cal-grid        { grid-template-columns: 1fr; }
   .dashboard-main  { grid-template-columns: 1fr; }
+  .cookbook-grid   { grid-template-columns: repeat(3, 1fr); }
+  .week-strip-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
 @media (max-width: 640px) {
   .stats-grid, .stats-grid-3 { grid-template-columns: 1fr; }
   .modal-box { padding: 20px; max-height: calc(100dvh - 40px); }
+  .cookbook-grid   { grid-template-columns: repeat(2, 1fr); }
+  .week-strip-grid { grid-template-columns: repeat(2, 1fr); }
+  .recipe-sidebar  { width: 100% !important; }
 }
 
 @media (max-width: 400px) {
