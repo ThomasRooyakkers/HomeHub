@@ -5,6 +5,29 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent overscroll bounce from revealing the background on iOS */
+  overscroll-behavior: none;
+}
+
+/* Momentum scrolling for all scroll containers */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Remove tap flash on all interactive elements for a native feel */
+button, a, input, select, textarea, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent double-tap zoom on buttons/links — keep tap-to-scroll working */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* Prevent iOS Safari from auto-zooming into focused inputs.
+   iOS zooms when the input font-size is below 16px. */
+input, textarea, select {
+  font-size: 16px;
 }
 
 code {

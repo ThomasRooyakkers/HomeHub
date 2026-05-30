@@ -381,6 +381,9 @@ export default function App() {
               />
             </ErrorBoundary>
           )}
+          {activeTool === "shopping" && (
+            <ShoppingList shopping={shopping} setShopping={setShopping} apiEnabled={apiEnabled} showToast={showToast} />
+          )}
           {activeTool === "plants" && (
             <ErrorBoundary key="plants">
               <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />
