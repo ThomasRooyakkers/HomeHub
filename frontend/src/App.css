@@ -46,20 +46,18 @@ html, body, #root {
 
 .app-root {
   min-height: 100dvh;
-  padding: 24px;
-  padding-left:  max(24px, env(safe-area-inset-left));
-  padding-right: max(24px, env(safe-area-inset-right));
+  background: var(--g-bg);
 }
 
 .app-layout {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 24px;
-  align-items: start;
+  display: flex;
+  min-height: 100vh;
 }
 
-/* Sidebar: sticky + fixed height so it never scrolls with the page content */
+/* Sidebar: 250 px wide, same bg as page — no dividing line */
 .sidebar {
+  width: 250px;
+  flex-shrink: 0;
   background: var(--g-bg);
   padding: 24px 16px;
   display: flex;
@@ -69,14 +67,19 @@ html, body, #root {
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  border-right: 1px solid var(--g-hair);
 }
 
 .app-main {
+  flex: 1;
+  min-width: 0;
   background: var(--g-bg);
-  min-height: 100vh;
-  padding: 0;
+  overflow-y: auto;
+  height: 100vh;
+  /* Hide scrollbar for a native feel */
+  scrollbar-width: none;
 }
+
+.app-main::-webkit-scrollbar { display: none; }
 
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 
@@ -339,43 +342,18 @@ html, body, #root {
   gap: 8px;
 }
 
-/* ── Tablet (iPad portrait — 641–1024px) ─────────────────────────────────── */
+/* ── Tablet (iPad — 641–1024px) ──────────────────────────────────────────── */
 
 @media (min-width: 641px) and (max-width: 1024px) {
-  .app-root {
-    padding: 16px;
-    padding-left:  max(16px, env(safe-area-inset-left));
-    padding-right: max(16px, env(safe-area-inset-right));
-  }
-
-  .app-layout {
-    grid-template-columns: 200px 1fr;
-    gap: 16px;
-  }
-
   .sidebar {
-    padding: 20px 16px;
-    gap: 20px;
-    height: calc(100dvh - 32px);
-    min-height: unset;
-    top: 16px;
-    overflow-y: hidden;
+    width: 200px;
+    padding: 20px 12px;
   }
 
-  .sidebar-header h1 { font-size: 20px; }
+  .sidebar-brand-name { font-size: 19px; }
 
-  .nav-btn {
-    padding: 12px 12px;
-    gap: 10px;
-    border-radius: 14px;
-  }
+  .nav-btn { padding: 10px 10px; gap: 10px; }
   .nav-btn__label { font-size: 13px; }
-  .nav-btn__icon  { font-size: 16px; }
-
-  .app-main {
-    padding: 24px;
-    min-height: unset;
-  }
 
   .stats-grid      { grid-template-columns: repeat(2, 1fr); }
   .stats-grid-3    { grid-template-columns: repeat(3, 1fr); }
@@ -397,15 +375,8 @@ html, body, #root {
 /* ── Mobile: bottom tab navigation (≤640px) ──────────────────────────────── */
 
 @media (max-width: 640px) {
-  .app-root {
-    padding: 12px 12px 0;
-    padding-left:  max(12px, env(safe-area-inset-left));
-    padding-right: max(12px, env(safe-area-inset-right));
-  }
-
   .app-layout {
-    grid-template-columns: 1fr;
-    gap: 0;
+    flex-direction: column;
   }
 
   /* Bottom tab bar */
@@ -482,8 +453,8 @@ html, body, #root {
   }
 
   .app-main {
-    padding: 16px;
-    min-height: unset;
+    height: auto;
+    overflow-y: visible;
     /* Leave room for the fixed bottom tab bar + Home indicator */
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }

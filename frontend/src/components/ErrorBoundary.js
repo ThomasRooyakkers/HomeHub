@@ -29,7 +29,7 @@ export default class ErrorBoundary extends Component {
             onClick={() => this.setState({ hasError: false, error: null })}
             style={{
               marginTop: 20,
-              background: "linear-gradient(135deg,#16a34a,#22c55e)",
+              background: "var(--g-sage)",
               border: "none",
               color: "#fff",
               padding: "10px 20px",
