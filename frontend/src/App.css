@@ -356,8 +356,10 @@ html, body, #root {
   .sidebar {
     padding: 20px 16px;
     gap: 20px;
-    min-height: calc(100dvh - 32px);
+    height: calc(100dvh - 32px);
+    min-height: unset;
     top: 16px;
+    overflow-y: hidden;
   }
 
   .sidebar-header h1 { font-size: 20px; }

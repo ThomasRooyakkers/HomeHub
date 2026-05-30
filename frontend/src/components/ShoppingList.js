@@ -69,7 +69,7 @@ const btnSecondary = {
   fontFamily: G.sans,
 };
 
-export default function ShoppingList({ shopping, setShopping, apiEnabled, showToast }) {
+export default function ShoppingList({ shopping, setShopping, apiEnabled, showToast, onRefresh }) {
   const { stores = [], items = [] } = shopping;
   const [activeStoreId, setActiveStoreId] = useState("all");
   const [quickAdd, setQuickAdd] = useState("");
@@ -204,15 +204,30 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
             Shopping
           </h1>
         </div>
-        <button
-          onClick={() => setStoreModal({ name: "", color: "#5a7a5e" })}
-          style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 8, padding: "10px 16px" }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          Add store
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {apiEnabled && onRefresh && (
+            <button
+              onClick={onRefresh}
+              title="Refresh"
+              style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 7, padding: "10px 14px" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+              Refresh
+            </button>
+          )}
+          <button
+            onClick={() => setStoreModal({ name: "", color: "#5a7a5e" })}
+            style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 8, padding: "10px 16px" }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            Add store
+          </button>
+        </div>
       </div>
 
       {/* Store filter tabs */}
