@@ -14,7 +14,6 @@
     "express-rate-limit": "^8.5.2",
     "express-session": "^1.19.0",
     "multer": "^1.4.5-lts.1",
-    "pdf-parse": "^1.1.1",
     "session-file-store": "^1.5.0",
     "tesseract.js": "^5.1.1"
   }

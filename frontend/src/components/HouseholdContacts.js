@@ -112,7 +112,7 @@ export default function HouseholdContacts({ contacts, setContacts, apiEnabled, s
   const filterCats = ["All", ...allCategories.filter(c => usedCats.includes(c) || DEFAULT_CATEGORIES.includes(c)), ...customCats.filter(c => !usedCats.includes(c) && !DEFAULT_CATEGORIES.includes(c))].filter((c, i, arr) => arr.indexOf(c) === i);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div>

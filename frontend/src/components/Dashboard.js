@@ -3,31 +3,61 @@ import { fmt, displayStatus, useTodayKey } from "../lib/utils";
 
 // ─── Weather ──────────────────────────────────────────────────────────────────
 
-const LAT = 51.05, LON = 5.45;
+const DEFAULT_LOCATION = { latitude: 51.05, longitude: 5.45, label: "Houthalen-Helchteren" };
 
-function useWeather() {
+function useWeather(location) {
   const [weather, setWeather] = useState(null);
   useEffect(() => {
-    const url =
-      `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
-      `&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
-      `&timezone=Europe%2FBrussels&forecast_days=1`;
-    fetch(url)
-      .then(r => r.json())
-      .then(data => {
-        const c = data.current;
+    let cancelled = false;
+    const fetchWeather = async () => {
+      try {
+        let lat = DEFAULT_LOCATION.latitude;
+        let lon = DEFAULT_LOCATION.longitude;
+        let label = DEFAULT_LOCATION.label;
+
+        if (location?.trim()) {
+          const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location.trim())}&count=1&language=en&format=json`;
+          const geoResp = await fetch(geoUrl);
+          if (geoResp.ok) {
+            const geoData = await geoResp.json();
+            if (geoData?.results?.length) {
+              lat = geoData.results[0].latitude;
+              lon = geoData.results[0].longitude;
+              label = `${geoData.results[0].name}${geoData.results[0].country ? `, ${geoData.results[0].country}` : ""}`;
+            } else {
+              label = location.trim();
+            }
+          }
+        }
+
+        const url =
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+          `&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
+          `&timezone=auto&forecast_days=1`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (cancelled) return;
+        const c = data.current || data.current_weather;
         const d = data.daily;
-        setWeather({
-          temp: Math.round(c.temperature_2m),
-          high: Math.round(d.temperature_2m_max[0]),
-          low: Math.round(d.temperature_2m_min[0]),
-          sunrise: d.sunrise[0].slice(-5),
-          sunset: d.sunset[0].slice(-5),
-          code: c.weathercode,
-        });
-      })
-      .catch(() => {});
-  }, []);
+        if (c && d) {
+          setWeather({
+            temp: Math.round(c.temperature_2m ?? c.temperature),
+            high: Math.round(d.temperature_2m_max[0]),
+            low: Math.round(d.temperature_2m_min[0]),
+            sunrise: d.sunrise[0].slice(-5),
+            sunset: d.sunset[0].slice(-5),
+            code: c.weathercode,
+            locationLabel: label,
+          });
+        }
+      } catch {
+        if (!cancelled) setWeather(null);
+      }
+    };
+    setWeather(null);
+    fetchWeather();
+    return () => { cancelled = true; };
+  }, [location]);
   return weather;
 }
 
@@ -77,6 +107,11 @@ function WeatherCard({ weather }) {
         <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>
           {weatherLabel(weather.code)} · H {weather.high} · L {weather.low}
         </p>
+        {weather.locationLabel && (
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>
+            {weather.locationLabel}
+          </p>
+        )}
       </div>
       <div style={{ marginLeft: "auto", textAlign: "right" }}>
         <p style={{ margin: 0, fontSize: 11.5, color: "var(--g-mute2)", fontFamily: "var(--g-sans)" }}>↑ {weather.sunrise}</p>
@@ -171,8 +206,6 @@ function IconWrench() {
 // ─── Meal card ────────────────────────────────────────────────────────────────
 
 function MealCard({ todayMeal, recipe, onOpenRecipe }) {
-  const missingIngCount = 0; // placeholder — real matching would need structured ingredients
-
   return (
     <div style={{
       background: "var(--g-card)",
@@ -606,10 +639,11 @@ export default function Dashboard({
   shopping = { stores: [], items: [] },
   plants = [],
   currentUser,
+  settings,
   onNavigate,
   onToggleInvoicePaid, onToggleMaintenanceDone, onWaterPlant,
 }) {
-  const weather = useWeather();
+  const weather = useWeather(settings?.location);
   const todayKey = useTodayKey();
 
   const now = useMemo(() => new Date(), []);
@@ -663,10 +697,10 @@ export default function Dashboard({
   }).length, [maintenanceTasks, sevenDaysOut]);
 
   return (
-    <div style={{ padding: "40px 40px 60px", fontFamily: "var(--g-sans)" }}>
+    <div className="page" style={{ fontFamily: "var(--g-sans)" }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 36, gap: 24 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 36, gap: 24, flexWrap: "wrap" }}>
         <div>
           <p style={{
             margin: "0 0 6px", fontSize: 11, fontWeight: 700, fontFamily: "var(--g-sans)",

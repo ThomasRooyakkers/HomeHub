@@ -116,7 +116,7 @@ export default function Maintenance({ maintenanceTasks, setMaintenanceTasks, api
   });
 
   return (
-    <div style={{ padding: "32px 40px 60px", display: "flex", flexDirection: "column", gap: 24, fontFamily: "var(--g-sans)" }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24, fontFamily: "var(--g-sans)" }}>
       {/* Page header */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
         <div>
@@ -132,7 +132,7 @@ export default function Maintenance({ maintenanceTasks, setMaintenanceTasks, api
       </div>
 
       {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <div className="stats-grid">
         {[
           { label: "Total tasks", value: totalTasks },
           { label: "Pending", value: pendingCount },

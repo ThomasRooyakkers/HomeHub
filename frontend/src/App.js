@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { apiFetch, ApiError } from "./lib/api";
+import { apiFetch } from "./lib/api";
 import Toast from "./components/Toast";
 import Login from "./components/Login";
 import Sidebar from "./components/Sidebar";
@@ -84,7 +84,7 @@ export default function App() {
   const [documents, setDocuments]           = useState(() => loadLocal("documents", []));
   const [contacts, setContacts]             = useState(() => loadLocal("contacts",  []));
   const [inventory, setInventory]           = useState(() => loadLocal("inventory", []));
-  const [settings, setSettings]             = useState({ appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#5a7a5e" });
+  const [settings, setSettings]             = useState(() => loadLocal("settings", { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#5a7a5e", location: "Houthalen-Helchteren" }));
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
   const [needsLogin, setNeedsLogin]         = useState(false);
@@ -115,6 +115,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("documents", JSON.stringify(documents)); } catch {} }, [documents]);
   useEffect(() => { try { localStorage.setItem("contacts",  JSON.stringify(contacts));  } catch {} }, [contacts]);
   useEffect(() => { try { localStorage.setItem("inventory", JSON.stringify(inventory)); } catch {} }, [inventory]);
+  useEffect(() => { try { localStorage.setItem("settings", JSON.stringify(settings)); } catch {} }, [settings]);
 
   const loadBackendData = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -335,6 +336,7 @@ export default function App() {
                 invoices={invoices} mealPlan={mealPlan} recipes={recipes}
                 maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
                 shopping={shopping} plants={plants} currentUser={currentUser}
+                settings={settings}
                 onNavigate={setActiveTool}
                 onToggleInvoicePaid={toggleInvoicePaid}
                 onToggleMaintenanceDone={toggleMaintenanceDone}
@@ -403,7 +405,7 @@ export default function App() {
           )}
           {activeTool === "inventory" && (
             <ErrorBoundary key="inventory">
-              <HomeInventory inventory={inventory} setInventory={setInventory} apiEnabled={apiEnabled} showToast={showToast} />
+              <HomeInventory inventory={inventory} setInventory={setInventory} documents={documents} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
           {activeTool === "admin" && currentUser?.role === "admin" && (

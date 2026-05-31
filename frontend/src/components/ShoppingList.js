@@ -193,7 +193,7 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
   const iconKey = detectGroceryIcon(quickAdd);
 
   return (
-    <div style={{ padding: "32px 40px 60px", display: "flex", flexDirection: "column", gap: 24 }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>

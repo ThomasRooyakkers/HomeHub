@@ -104,7 +104,6 @@ export default function Sidebar({ activeTool, setActiveTool, tools, showToast, c
                 {NAV_ICONS[tool.id] || NAV_ICONS.admin}
               </span>
               <span className="nav-btn__label">{tool.shortName || tool.name}</span>
-              {tool.id === "invoices" && <span className="nav-btn__dot" />}
             </button>
           );
         })}

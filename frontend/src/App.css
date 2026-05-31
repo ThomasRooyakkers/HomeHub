@@ -81,6 +81,24 @@ html, body, #root {
 
 .app-main::-webkit-scrollbar { display: none; }
 
+/* ── Page wrapper — responsive gutters + header scaling ──────────────────── */
+
+.page {
+  padding: 32px 40px 60px;
+}
+
+/* iPad / tablet: tighter gutters */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .page { padding: 28px 28px 56px; }
+}
+
+/* Phone: minimal gutters, scaled-down serif headlines */
+@media (max-width: 640px) {
+  .page { padding: 20px 16px 36px; }
+  .page > h1,
+  .page h1 { font-size: clamp(28px, 9vw, 34px) !important; }
+}
+
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 
 .g-card {
@@ -149,6 +167,15 @@ html, body, #root {
   display: grid;
   grid-template-columns: 1fr 340px;
   gap: 24px;
+  align-items: start;
+}
+
+/* ── Document vault grid ─────────────────────────────────────────────────── */
+
+.doc-vault-grid {
+  display: grid;
+  grid-template-columns: 180px 1fr 360px;
+  gap: 20px;
   align-items: start;
 }
 
@@ -231,7 +258,7 @@ html, body, #root {
 
 .sidebar-brand-sub {
   font-family: var(--g-sans);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--g-muted);
   margin-top: 2px;
 }
@@ -361,6 +388,7 @@ html, body, #root {
   .cal-grid        { grid-template-columns: 1fr; }
   .dashboard-main  { grid-template-columns: 1fr; }
   .dashboard-grid  { grid-template-columns: 1fr 1fr; }
+  .doc-vault-grid  { grid-template-columns: 160px 1fr; }
 }
 
 /* ── 1025–1200px desktop breakpoint ─────────────────────────────────────── */
@@ -386,6 +414,7 @@ html, body, #root {
     left: 0;
     right: 0;
     top: auto;
+    width: 100%;
     height: auto;
     border-right: none;
     border-top: 1px solid var(--g-hair);
@@ -443,7 +472,7 @@ html, body, #root {
   }
 
   .nav-btn__label {
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--g-muted);
     white-space: nowrap;
@@ -469,10 +498,11 @@ html, body, #root {
   .stat-card__value { font-size: 22px !important; margin-top: 6px !important; }
 
   .modal-box { padding: 20px; max-height: calc(100dvh - 40px); }
-  .shopping-grid { grid-template-columns: 1fr; }
+  .shopping-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .cookbook-grid   { grid-template-columns: repeat(2, 1fr); }
   .week-strip-grid { grid-template-columns: repeat(2, 1fr); }
   .recipe-sidebar  { width: 100% !important; }
+  .doc-vault-grid  { grid-template-columns: 1fr; }
 
   .nav-btn--active .nav-btn__label { color: var(--g-sage-dark); }
   .nav-btn__dot { display: none; }
@@ -485,6 +515,7 @@ html, body, #root {
   .dashboard-main  { grid-template-columns: 1fr; }
   .cookbook-grid   { grid-template-columns: repeat(3, 1fr); }
   .week-strip-grid { grid-template-columns: repeat(4, 1fr); }
+  .doc-vault-grid  { grid-template-columns: 160px 1fr 300px; }
 }
 
 @media (max-width: 400px) {

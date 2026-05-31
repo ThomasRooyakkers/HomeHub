@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "../lib/api";
-import { fmt, fmtDate, displayStatus, statusStyle } from "../lib/utils";
+import { fmt, fmtDate, displayStatus } from "../lib/utils";
 
 const STATUSES = { ALL: "all", UNPAID: "unpaid", PAID: "paid", OVERDUE: "overdue" };
 const CATEGORIES = ["Utilities", "Rent", "Internet", "Insurance", "Subscriptions", "Other"];
@@ -237,7 +237,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
     };
     if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
     // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
-    const numeric = text.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    const numeric = text.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
     if (numeric) {
       const [, d, m, y] = numeric;
       return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -370,7 +370,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
   const isPdf = isPdfFile(form?.file);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
