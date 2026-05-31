@@ -19,17 +19,17 @@ export default class ErrorBoundary extends Component {
       return (
         <div style={{ padding: 40, textAlign: "center" }}>
           <p style={{ fontSize: 32, margin: 0 }}>⚠️</p>
-          <h2 style={{ margin: "16px 0 8px", color: "#991b1b", fontSize: 20, fontWeight: 800 }}>
+          <h2 style={{ margin: "16px 0 8px", color: "var(--g-brick)", fontSize: 20, fontWeight: 700 }}>
             Something went wrong
           </h2>
-          <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
+          <p style={{ margin: 0, color: "var(--g-muted)", fontSize: 14 }}>
             {this.state.error?.message || "An unexpected error occurred in this panel."}
           </p>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
             style={{
               marginTop: 20,
-              background: "linear-gradient(135deg,#16a34a,#22c55e)",
+              background: "var(--g-sage)",
               border: "none",
               color: "#fff",
               padding: "10px 20px",

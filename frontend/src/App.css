@@ -46,20 +46,18 @@ html, body, #root {
 
 .app-root {
   min-height: 100dvh;
-  padding: 24px;
-  padding-left:  max(24px, env(safe-area-inset-left));
-  padding-right: max(24px, env(safe-area-inset-right));
+  background: var(--g-bg);
 }
 
 .app-layout {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 24px;
-  align-items: start;
+  display: flex;
+  min-height: 100vh;
 }
 
-/* Sidebar: sticky + fixed height so it never scrolls with the page content */
+/* Sidebar: 250 px wide, same bg as page — no dividing line */
 .sidebar {
+  width: 250px;
+  flex-shrink: 0;
   background: var(--g-bg);
   padding: 24px 16px;
   display: flex;
@@ -69,13 +67,36 @@ html, body, #root {
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  border-right: 1px solid var(--g-hair);
 }
 
 .app-main {
+  flex: 1;
+  min-width: 0;
   background: var(--g-bg);
-  min-height: 100vh;
-  padding: 0;
+  overflow-y: auto;
+  height: 100vh;
+  /* Hide scrollbar for a native feel */
+  scrollbar-width: none;
+}
+
+.app-main::-webkit-scrollbar { display: none; }
+
+/* ── Page wrapper — responsive gutters + header scaling ──────────────────── */
+
+.page {
+  padding: 32px 40px 60px;
+}
+
+/* iPad / tablet: tighter gutters */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .page { padding: 28px 28px 56px; }
+}
+
+/* Phone: minimal gutters, scaled-down serif headlines */
+@media (max-width: 640px) {
+  .page { padding: 20px 16px 36px; }
+  .page > h1,
+  .page h1 { font-size: clamp(28px, 9vw, 34px) !important; }
 }
 
 /* ── Cards ───────────────────────────────────────────────────────────────── */
@@ -146,6 +167,15 @@ html, body, #root {
   display: grid;
   grid-template-columns: 1fr 340px;
   gap: 24px;
+  align-items: start;
+}
+
+/* ── Document vault grid ─────────────────────────────────────────────────── */
+
+.doc-vault-grid {
+  display: grid;
+  grid-template-columns: 180px 1fr 360px;
+  gap: 20px;
   align-items: start;
 }
 
@@ -228,7 +258,7 @@ html, body, #root {
 
 .sidebar-brand-sub {
   font-family: var(--g-sans);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--g-muted);
   margin-top: 2px;
 }
@@ -339,43 +369,18 @@ html, body, #root {
   gap: 8px;
 }
 
-/* ── Tablet (iPad portrait — 641–1024px) ─────────────────────────────────── */
+/* ── Tablet (iPad — 641–1024px) ──────────────────────────────────────────── */
 
 @media (min-width: 641px) and (max-width: 1024px) {
-  .app-root {
-    padding: 16px;
-    padding-left:  max(16px, env(safe-area-inset-left));
-    padding-right: max(16px, env(safe-area-inset-right));
-  }
-
-  .app-layout {
-    grid-template-columns: 200px 1fr;
-    gap: 16px;
-  }
-
   .sidebar {
-    padding: 20px 16px;
-    gap: 20px;
-    height: calc(100dvh - 32px);
-    min-height: unset;
-    top: 16px;
-    overflow-y: hidden;
+    width: 200px;
+    padding: 20px 12px;
   }
 
-  .sidebar-header h1 { font-size: 20px; }
+  .sidebar-brand-name { font-size: 19px; }
 
-  .nav-btn {
-    padding: 12px 12px;
-    gap: 10px;
-    border-radius: 14px;
-  }
+  .nav-btn { padding: 10px 10px; gap: 10px; }
   .nav-btn__label { font-size: 13px; }
-  .nav-btn__icon  { font-size: 16px; }
-
-  .app-main {
-    padding: 24px;
-    min-height: unset;
-  }
 
   .stats-grid      { grid-template-columns: repeat(2, 1fr); }
   .stats-grid-3    { grid-template-columns: repeat(3, 1fr); }
@@ -383,6 +388,7 @@ html, body, #root {
   .cal-grid        { grid-template-columns: 1fr; }
   .dashboard-main  { grid-template-columns: 1fr; }
   .dashboard-grid  { grid-template-columns: 1fr 1fr; }
+  .doc-vault-grid  { grid-template-columns: 160px 1fr; }
 }
 
 /* ── 1025–1200px desktop breakpoint ─────────────────────────────────────── */
@@ -397,15 +403,8 @@ html, body, #root {
 /* ── Mobile: bottom tab navigation (≤640px) ──────────────────────────────── */
 
 @media (max-width: 640px) {
-  .app-root {
-    padding: 12px 12px 0;
-    padding-left:  max(12px, env(safe-area-inset-left));
-    padding-right: max(12px, env(safe-area-inset-right));
-  }
-
   .app-layout {
-    grid-template-columns: 1fr;
-    gap: 0;
+    flex-direction: column;
   }
 
   /* Bottom tab bar */
@@ -415,6 +414,7 @@ html, body, #root {
     left: 0;
     right: 0;
     top: auto;
+    width: 100%;
     height: auto;
     border-right: none;
     border-top: 1px solid var(--g-hair);
@@ -472,7 +472,7 @@ html, body, #root {
   }
 
   .nav-btn__label {
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--g-muted);
     white-space: nowrap;
@@ -482,8 +482,8 @@ html, body, #root {
   }
 
   .app-main {
-    padding: 16px;
-    min-height: unset;
+    height: auto;
+    overflow-y: visible;
     /* Leave room for the fixed bottom tab bar + Home indicator */
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
@@ -498,10 +498,11 @@ html, body, #root {
   .stat-card__value { font-size: 22px !important; margin-top: 6px !important; }
 
   .modal-box { padding: 20px; max-height: calc(100dvh - 40px); }
-  .shopping-grid { grid-template-columns: 1fr; }
+  .shopping-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .cookbook-grid   { grid-template-columns: repeat(2, 1fr); }
   .week-strip-grid { grid-template-columns: repeat(2, 1fr); }
   .recipe-sidebar  { width: 100% !important; }
+  .doc-vault-grid  { grid-template-columns: 1fr; }
 
   .nav-btn--active .nav-btn__label { color: var(--g-sage-dark); }
   .nav-btn__dot { display: none; }
@@ -514,6 +515,7 @@ html, body, #root {
   .dashboard-main  { grid-template-columns: 1fr; }
   .cookbook-grid   { grid-template-columns: repeat(3, 1fr); }
   .week-strip-grid { grid-template-columns: repeat(4, 1fr); }
+  .doc-vault-grid  { grid-template-columns: 160px 1fr 300px; }
 }
 
 @media (max-width: 400px) {

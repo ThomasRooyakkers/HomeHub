@@ -231,6 +231,15 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
                 <button style={btnSecondary} onClick={() => setSettingsForm(f => ({ ...f, accentColor: "#5a7a5e" }))}>Reset</button>
               </div>
             </div>
+            <div>
+              <label style={labelStyle}>Weather location</label>
+              <input
+                style={inputStyle}
+                placeholder="e.g. Houthalen-Helchteren"
+                value={settingsForm.location || ""}
+                onChange={e => setSettingsForm(f => ({ ...f, location: e.target.value }))}
+              />
+            </div>
           </div>
 
           <button style={{ ...btnPrimary, alignSelf: "flex-start" }} onClick={saveSettings}>Save settings</button>

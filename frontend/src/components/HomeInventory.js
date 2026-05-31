@@ -20,9 +20,9 @@ const warrantyBadge = (dateStr) => {
   return { label: `${Math.round(days / 30)}mo left`, bg: "var(--g-sage-bg)", color: "var(--g-sage-dark)" };
 };
 
-const EMPTY_FORM = { name: "", brand: "", model: "", serialNo: "", purchaseDate: "", warrantyExpiry: "", value: "", location: "", notes: "" };
+const EMPTY_FORM = { name: "", brand: "", model: "", serialNo: "", purchaseDate: "", warrantyExpiry: "", value: "", location: "", documentId: "", notes: "" };
 
-export default function HomeInventory({ inventory, setInventory, apiEnabled, showToast }) {
+export default function HomeInventory({ inventory, setInventory, documents = [], apiEnabled, showToast }) {
   const [locationFilter, setLocationFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(null);
@@ -65,6 +65,7 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
       warrantyExpiry: form.warrantyExpiry || "",
       value: form.value ? parseFloat(form.value) : null,
       location: form.location || "",
+      documentId: form.documentId || "",
       notes: form.notes || "",
     };
     try {
@@ -110,7 +111,7 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
   const totalValue = inventory.reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
         <div>
@@ -186,6 +187,11 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
                 <div>
                   <div style={{ fontWeight: 600, color: "var(--g-ink)", fontSize: 14, fontFamily: "var(--g-sans)" }}>{item.name}</div>
                   {item.serialNo && <div style={{ fontSize: 11, color: "var(--g-mute2)", marginTop: 2 }}>S/N {item.serialNo}</div>}
+                  {item.documentId && (
+                    <div style={{ fontSize: 11, color: "var(--g-muted)", marginTop: 4 }}>
+                      Linked doc: {documents.find(doc => String(doc.id) === String(item.documentId))?.title || "Missing document"}
+                    </div>
+                  )}
                 </div>
                 <div style={{ fontSize: 13, color: "var(--g-ink2)" }}>{[item.brand, item.model].filter(Boolean).join(" · ") || "—"}</div>
                 <div style={{ fontSize: 13, color: "var(--g-ink2)" }}>{item.location || "—"}</div>
@@ -232,6 +238,19 @@ export default function HomeInventory({ inventory, setInventory, apiEnabled, sho
               <div>
                 <label style={labelStyle}>Location</label>
                 <input style={inputStyle} value={form.location || ""} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="e.g. Kitchen" />
+              </div>
+              <div>
+                <label style={labelStyle}>Linked document</label>
+                <select
+                  style={inputStyle}
+                  value={form.documentId || ""}
+                  onChange={e => setForm(f => ({ ...f, documentId: e.target.value }))}
+                >
+                  <option value="">— None —</option>
+                  {documents.map(doc => (
+                    <option key={doc.id} value={doc.id}>{doc.title}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label style={labelStyle}>Purchase date</label>

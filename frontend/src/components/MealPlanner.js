@@ -30,11 +30,11 @@ function parseSteps(str) {
 }
 
 const CAT_STYLES = {
-  Fish:   { bg: "#dceefb", color: "#1d6a8c" },
-  Pasta:  { bg: "#fef3c7", color: "#92400e" },
-  Meat:   { bg: "#fde8e8", color: "#9b1c1c" },
-  Veg:    { bg: "#d1fae5", color: "#065f46" },
-  Baking: { bg: "#ede9fe", color: "#5b21b6" },
+  Fish:   { bg: "var(--g-sky-bg)",   color: "var(--g-sky)"   },
+  Pasta:  { bg: "var(--g-honey-bg)", color: "var(--g-honey)" },
+  Meat:   { bg: "var(--g-brick-bg)", color: "var(--g-brick)" },
+  Veg:    { bg: "var(--g-sage-bg)",  color: "var(--g-sage)"  },
+  Baking: { bg: "var(--g-bg2)",      color: "var(--g-ink2)"  },
 };
 const getCatStyle = (cat) => CAT_STYLES[cat] || { bg: "var(--g-bg2)", color: "var(--g-ink2)" };
 
@@ -190,7 +190,7 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
   };
 
   return (
-    <div style={{ padding: "32px 40px 60px", display: "flex", flexDirection: "column", gap: 32, fontFamily: "var(--g-sans)" }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 32, fontFamily: "var(--g-sans)" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
         <div>
@@ -248,7 +248,7 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
                   borderBottom: `1px solid ${isToday ? "transparent" : "var(--g-hair)"}`,
                 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: isToday ? "rgba(255,255,255,0.75)" : "var(--g-muted)" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: isToday ? "rgba(255,255,255,0.75)" : "var(--g-muted)" }}>
                       {day.short.toUpperCase()}
                     </span>
                     <span style={{ fontSize: 22, fontWeight: 400, fontFamily: "var(--g-serif)", color: isToday ? "#fff" : "var(--g-ink)", lineHeight: 1 }}>
@@ -256,7 +256,7 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
                     </span>
                   </div>
                   {isToday && (
-                    <p style={{ margin: "2px 0 0", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, color: "rgba(255,255,255,0.65)" }}>
+                    <p style={{ margin: "2px 0 0", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, color: "rgba(255,255,255,0.65)" }}>
                       Tonight
                     </p>
                   )}
@@ -316,18 +316,18 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
 
       {/* Cookbook */}
       <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--g-ink)" }}>
             Cookbook <span style={{ color: "var(--g-muted)", fontWeight: 400 }}>· {recipes.length}</span>
           </h2>
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", flex: "1 1 200px", maxWidth: 320, minWidth: 0 }}>
             <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--g-muted)", fontSize: 13, pointerEvents: "none" }}>⌕</span>
             <input
               type="text"
               placeholder="Search recipes or ingredients…"
               value={recipeSearchTerm}
               onChange={e => setRecipeSearchTerm(e.target.value)}
-              style={{ background: "var(--g-card)", border: "1px solid var(--g-hair)", borderRadius: 14, padding: "9px 14px 9px 30px", color: "var(--g-ink)", fontSize: 13, width: 260, fontFamily: "var(--g-sans)", outline: "none" }}
+              style={{ background: "var(--g-card)", border: "1px solid var(--g-hair)", borderRadius: 14, padding: "9px 14px 9px 30px", color: "var(--g-ink)", fontSize: 13, width: "100%", boxSizing: "border-box", fontFamily: "var(--g-sans)", outline: "none" }}
             />
           </div>
         </div>

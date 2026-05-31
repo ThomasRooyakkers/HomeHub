@@ -1,6 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -189,7 +188,7 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-const SAMPLE_SETTINGS = { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a" };
+const SAMPLE_SETTINGS = { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a", location: "Houthalen-Helchteren" };
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
 
@@ -281,21 +280,6 @@ const parseICS = (content, provider) => {
 
   return events;
 };
-
-const fetchJson = (url) => new Promise((resolve, reject) => {
-  https.get(url, (res) => {
-    let data = "";
-    res.setEncoding("utf8");
-    res.on("data", (chunk) => { data += chunk; });
-    res.on("end", () => {
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        try { resolve(JSON.parse(data)); } catch (error) { reject(error); }
-      } else {
-        reject(new Error(`HTTP ${res.statusCode}`));
-      }
-    });
-  }).on("error", reject);
-});
 
 // ── Health & utility ──────────────────────────────────────────────────────────
 
@@ -676,13 +660,14 @@ app.get("/api/settings", (_, res) => res.json(safeLoad(SETTINGS_FILE, SAMPLE_SET
 app.put("/api/settings", requireAdmin, (req, res, next) => {
   try {
     const current = safeLoad(SETTINGS_FILE, SAMPLE_SETTINGS);
-    const { appName, householdName, currency, accentColor } = parsePayload(req);
+    const { appName, householdName, currency, accentColor, location } = parsePayload(req);
     const updated = {
       ...current,
       ...(appName !== undefined && { appName: String(appName).trim() || current.appName }),
       ...(householdName !== undefined && { householdName: String(householdName).trim() }),
       ...(currency !== undefined && { currency: String(currency) }),
       ...(accentColor !== undefined && { accentColor: String(accentColor) }),
+      ...(location !== undefined && { location: String(location).trim() }),
     };
     saveFile(SETTINGS_FILE, updated);
     broadcast("settings");
@@ -834,21 +819,22 @@ app.put("/api/shopping/items/:id", (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-app.delete("/api/shopping/items/:id", (req, res, next) => {
+// Must be declared before the "/:id" route so the literal path is matched first.
+app.delete("/api/shopping/items/checked", (req, res, next) => {
   try {
+    const { storeId } = req.query;
     const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
-    data.items = data.items.filter(i => i.id !== parseInt(req.params.id, 10));
+    data.items = data.items.filter(i => !i.checked || (storeId && i.storeId !== parseInt(storeId, 10)));
     saveFile(SHOPPING_FILE, data);
     broadcast("shopping");
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
-app.delete("/api/shopping/items/checked", (req, res, next) => {
+app.delete("/api/shopping/items/:id", (req, res, next) => {
   try {
-    const { storeId } = req.query;
     const data = safeLoad(SHOPPING_FILE, SAMPLE_SHOPPING);
-    data.items = data.items.filter(i => !i.checked || (storeId && i.storeId !== parseInt(storeId, 10)));
+    data.items = data.items.filter(i => i.id !== parseInt(req.params.id, 10));
     saveFile(SHOPPING_FILE, data);
     broadcast("shopping");
     res.json({ ok: true });

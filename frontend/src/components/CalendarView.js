@@ -114,7 +114,7 @@ function MonthGrid({ year, month, events, providers, selectedDay, onDayClick, to
                   ))}
                   {evs.length > 3 && (
                     <span style={{
-                      fontSize: 9,
+                      fontSize: 10,
                       fontFamily: "var(--g-sans)",
                       color: isSel ? "rgba(255,255,255,0.75)" : "var(--g-mute2)",
                     }}>+{evs.length - 3}</span>
@@ -266,7 +266,7 @@ export default function CalendarView({
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: "32px 40px 60px", display: "flex", flexDirection: "column", gap: 24 }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
       {/* ── Page heading ──────────────────────────────────────────────────── */}
       <div>

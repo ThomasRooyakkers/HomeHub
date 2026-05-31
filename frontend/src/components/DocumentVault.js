@@ -59,7 +59,7 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
   const [form, setForm] = useState(null);
   const [file, setFile] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
-  const [previewDoc, setPreviewDoc] = useState(null);
+  const [selectedDoc, setSelectedDoc] = useState(null);
   const [customCats, setCustomCats] = useState([]);
   const [newCatInput, setNewCatInput] = useState("");
   const [showCatManager, setShowCatManager] = useState(false);
@@ -144,7 +144,7 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div>
@@ -157,8 +157,8 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
         </div>
       </div>
 
-      {/* 3-column layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 20, alignItems: "start" }}>
+      {/* 3-column layout: categories | list | preview */}
+      <div className="doc-vault-grid">
         {/* Category sidebar */}
         <div style={{ background: "var(--g-card)", borderRadius: 20, boxShadow: "var(--g-shadow)", overflow: "hidden" }}>
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--g-hair)" }}>
@@ -196,8 +196,19 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
               {sorted.map((doc, idx) => {
                 const badge = expiryBadge(doc.expiryDate);
                 const catColor = getCatColor(doc.category);
+                const isSelected = selectedDoc?.id === doc.id;
                 return (
-                  <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 24px", borderTop: idx > 0 ? "1px solid var(--g-hair2)" : "none" }}>
+                  <div
+                    key={doc.id}
+                    onClick={() => setSelectedDoc(isSelected ? null : doc)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 16, padding: "14px 24px",
+                      borderTop: idx > 0 ? "1px solid var(--g-hair2)" : "none",
+                      cursor: "pointer",
+                      background: isSelected ? "var(--g-sage-bg)" : "transparent",
+                      transition: "background 0.1s",
+                    }}
+                  >
                     {/* Type badge */}
                     <div style={{ fontSize: 28, flexShrink: 0 }}>{fileIcon(doc.originalName)}</div>
 
@@ -215,15 +226,12 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
                     </div>
 
                     {/* Actions */}
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                       {doc.file && (
-                        <button onClick={() => setPreviewDoc(doc)} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12 }}>Preview</button>
-                      )}
-                      {doc.file && (
-                        <a href={`/uploads/${doc.file}`} download={doc.originalName || doc.file} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12, textDecoration: "none" }}>Download</a>
+                        <a href={`/uploads/${doc.file}`} download={doc.originalName || doc.file} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12, textDecoration: "none" }}>↓</a>
                       )}
                       <button onClick={() => openEdit(doc)} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12 }}>Edit</button>
-                      <button onClick={() => setDeleteId(doc.id)} style={{ padding: "6px 12px", background: "var(--g-brick-bg)", color: "var(--g-brick)", border: "1px solid var(--g-hair)", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+                      <button onClick={() => setDeleteId(doc.id)} style={{ padding: "6px 12px", background: "var(--g-brick-bg)", color: "var(--g-brick)", border: "1px solid var(--g-hair)", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Del</button>
                     </div>
                   </div>
                 );
@@ -231,42 +239,58 @@ export default function DocumentVault({ documents, setDocuments, apiEnabled, sho
             </div>
           )}
         </div>
-      </div>
 
-      {/* Preview modal */}
-      {previewDoc && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setPreviewDoc(null)}>
-          <div style={{
-            background: "var(--g-card)", borderRadius: 20, width: "min(900px, 96vw)",
-            maxHeight: "calc(100vh - 40px)", display: "flex", flexDirection: "column",
-            overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid var(--g-hair)" }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 16, color: "var(--g-ink)", fontFamily: "var(--g-serif)" }}>{previewDoc.title}</div>
-                {previewDoc.originalName && <div style={{ fontSize: 12, color: "var(--g-mute2)", marginTop: 2 }}>{previewDoc.originalName}</div>}
+        {/* Right column: document preview */}
+        <div style={{
+          background: "var(--g-card)", borderRadius: 20, boxShadow: "var(--g-shadow)",
+          display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 400,
+        }}>
+          {selectedDoc ? (
+            <>
+              <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--g-hair)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexShrink: 0 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: "var(--g-ink)", fontFamily: "var(--g-serif)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedDoc.title}</div>
+                  {selectedDoc.originalName && <div style={{ fontSize: 11, color: "var(--g-mute2)", marginTop: 1 }}>{selectedDoc.originalName}</div>}
+                </div>
+                <button onClick={() => setSelectedDoc(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--g-mute2)", fontSize: 18, lineHeight: 1, flexShrink: 0, padding: "2px 4px" }}>×</button>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <a href={`/uploads/${previewDoc.file}`} download={previewDoc.originalName || previewDoc.file} style={{ ...btnSecondary, padding: "7px 14px", fontSize: 13, textDecoration: "none" }}>Download</a>
-                <button onClick={() => setPreviewDoc(null)} style={{ ...btnSecondary, padding: "7px 14px", fontSize: 13 }}>Close</button>
+              <div style={{ flex: 1, overflow: "hidden", background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 }}>
+                {selectedDoc.file ? (
+                  isImage(selectedDoc.originalName) ? (
+                    <img src={`/uploads/${selectedDoc.file}`} alt={selectedDoc.title} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                  ) : isPdf(selectedDoc.originalName) ? (
+                    <iframe src={`/uploads/${selectedDoc.file}`} title={selectedDoc.title} style={{ width: "100%", height: "100%", border: "none", minHeight: 380 }} />
+                  ) : (
+                    <div style={{ textAlign: "center", color: "rgba(255,255,255,0.5)", padding: 32 }}>
+                      <div style={{ fontSize: 48, marginBottom: 12 }}>📄</div>
+                      <div style={{ fontSize: 14 }}>Preview not available</div>
+                      <a href={`/uploads/${selectedDoc.file}`} download={selectedDoc.originalName || selectedDoc.file} style={{ display: "inline-block", marginTop: 14, padding: "8px 18px", background: "var(--g-sage)", borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 600, color: "#fff" }}>Download</a>
+                    </div>
+                  )
+                ) : (
+                  <div style={{ textAlign: "center", color: "rgba(255,255,255,0.5)", padding: 32 }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>📄</div>
+                    <div style={{ fontSize: 14 }}>No file attached</div>
+                  </div>
+                )}
               </div>
-            </div>
-            <div style={{ flex: 1, overflow: "hidden", background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 400 }}>
-              {isImage(previewDoc.originalName) ? (
-                <img src={`/uploads/${previewDoc.file}`} alt={previewDoc.title} style={{ maxWidth: "100%", maxHeight: "calc(100vh - 160px)", objectFit: "contain" }} />
-              ) : isPdf(previewDoc.originalName) ? (
-                <iframe src={`/uploads/${previewDoc.file}`} title={previewDoc.title} style={{ width: "100%", height: "calc(100vh - 160px)", border: "none" }} />
-              ) : (
-                <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
-                  <div style={{ fontSize: 64, marginBottom: 16 }}>📄</div>
-                  <div style={{ fontSize: 16 }}>Preview not available for this file type.</div>
-                  <a href={`/uploads/${previewDoc.file}`} download={previewDoc.originalName || previewDoc.file} style={{ display: "inline-block", marginTop: 16, padding: "10px 20px", background: "var(--g-sage)", borderRadius: 10, textDecoration: "none", fontSize: 14, fontWeight: 600, color: "#fff" }}>Download</a>
+              {selectedDoc.file && (
+                <div style={{ padding: "10px 16px", borderTop: "1px solid var(--g-hair)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
+                  <a href={`/uploads/${selectedDoc.file}`} download={selectedDoc.originalName || selectedDoc.file} style={{ ...btnSecondary, padding: "7px 16px", fontSize: 13, textDecoration: "none" }}>Download</a>
                 </div>
               )}
+            </>
+          ) : (
+            <div style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              border: "2px dashed var(--g-hair)", borderRadius: 20, margin: 16, gap: 12, padding: 24, textAlign: "center",
+            }}>
+              <div style={{ fontSize: 40, opacity: 0.3 }}>📄</div>
+              <p style={{ margin: 0, fontSize: 14, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>Select a document to preview</p>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Add/Edit modal */}
       {form && (

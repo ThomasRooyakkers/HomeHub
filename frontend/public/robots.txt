@@ -1,3 +1,3 @@
-# https://www.robotstxt.org/robotstxt.html
+# Private household dashboard — not for public indexing
 User-agent: *
-Disallow:
+Disallow: /

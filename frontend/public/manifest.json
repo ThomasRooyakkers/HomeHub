@@ -12,7 +12,7 @@
       "src": "logo192.png",
       "type": "image/png",
       "sizes": "192x192",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
       "src": "logo512.png",
@@ -24,6 +24,6 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "theme_color": "#10b981",
-  "background_color": "#eef2f7"
+  "theme_color": "#5a7a5e",
+  "background_color": "#f7f3ea"
 }

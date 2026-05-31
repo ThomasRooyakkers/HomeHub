@@ -165,7 +165,7 @@ export default function PlantManager({ plants, setPlants, apiEnabled, showToast 
   const needsWaterCount = plants.filter(p => getDaysUntil(getNextDueDate(p.lastWatered, p.wateringFrequency)) <= 0).length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "32px 40px 60px" }}>
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div>
