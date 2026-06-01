@@ -88,6 +88,7 @@ export default function App() {
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
   const [needsLogin, setNeedsLogin]         = useState(false);
+  const [authChecked, setAuthChecked]       = useState(false);
   const [toast, setToast]                   = useState(null);
   const [quickAddOpen, setQuickAddOpen]     = useState(false);
 
@@ -162,8 +163,10 @@ export default function App() {
         setApiEnabled(true);
         await loadBackendData();
       } catch (err) {
-        // Any failure (401 or network down) → require login
+        // Any failure (401 or network down) → require login, no offline access
         setNeedsLogin(true);
+      } finally {
+        setAuthChecked(true);
       }
     };
     init();
@@ -308,6 +311,25 @@ export default function App() {
     setMaintenance(prev => prev.map(t => t.id === id ? updated : t));
     showToast("Task updated");
   };
+
+  // Don't render anything (not even cached localStorage data) until the auth
+  // check resolves — prevents a flash of content before login is enforced.
+  if (!authChecked) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        background: "var(--g-bg)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--g-muted)",
+        fontFamily: "var(--g-sans)",
+        fontSize: 14,
+      }}>
+        Loading…
+      </div>
+    );
+  }
 
   if (needsLogin) {
     return <Login onLogin={handleLogin} />;

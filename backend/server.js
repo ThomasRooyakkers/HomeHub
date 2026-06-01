@@ -219,6 +219,9 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 app.get("/api/auth/me", (req, res) => {
+  if (!req.session?.userId) {
+    return res.status(401).json({ error: { code: 401, message: "Not authenticated" } });
+  }
   res.json({ id: req.session.userId, username: req.session.username, role: req.session.role || "user" });
 });
 
