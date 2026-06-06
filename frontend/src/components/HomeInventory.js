@@ -125,7 +125,7 @@ export default function HomeInventory({ inventory, setInventory, documents = [],
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
         {[
           { label: "Items tracked", value: inventory.length, accent: "var(--g-sage)" },
-          { label: "Estimated value", value: `€${totalValue.toLocaleString("nl-BE", { minimumFractionDigits: 0 })}`, accent: "var(--g-honey)" },
+          { label: "Estimated value", value: `€${totalValue.toLocaleString("en-US", { minimumFractionDigits: 0 })}`, accent: "var(--g-honey)" },
           { label: "Warranty alerts", value: expiringCount, accent: expiringCount > 0 ? "var(--g-brick)" : "var(--g-sage)" },
         ].map(s => (
           <div key={s.label} style={{ background: "var(--g-card)", borderRadius: 20, padding: "20px 22px", boxShadow: "var(--g-shadow)" }}>

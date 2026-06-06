@@ -3,7 +3,7 @@ import { fmt, displayStatus, useTodayKey } from "../lib/utils";
 
 // ─── Weather ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_LOCATION = { latitude: 51.05, longitude: 5.45, label: "Houthalen-Helchteren" };
+const DEFAULT_LOCATION = { latitude: 40.7128, longitude: -74.006, label: "New York" };
 
 function useWeather(location) {
   const [weather, setWeather] = useState(null);

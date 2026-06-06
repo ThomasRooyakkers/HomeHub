@@ -90,7 +90,7 @@ export default function App() {
   const [documents, setDocuments]           = useState(() => loadLocal("documents", []));
   const [contacts, setContacts]             = useState(() => loadLocal("contacts",  []));
   const [inventory, setInventory]           = useState(() => loadLocal("inventory", []));
-  const [settings, setSettings]             = useState(() => loadLocal("settings", { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#5a7a5e", location: "Houthalen-Helchteren" }));
+  const [settings, setSettings]             = useState(() => loadLocal("settings", { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#5a7a5e", location: "New York" }));
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
   const [users, setUsers]                   = useState([]);

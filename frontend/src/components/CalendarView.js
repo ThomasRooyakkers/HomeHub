@@ -329,7 +329,7 @@ export default function CalendarView({
                   </button>
                   {lastRefresh && (
                     <span style={{ fontSize: 11, fontFamily: "var(--g-sans)", color: "var(--g-mute2)" }}>
-                      {lastRefresh.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })}
+                      {lastRefresh.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   )}
                 </div>

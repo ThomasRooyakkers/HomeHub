@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 
 export const fmt = (n) =>
-  new Intl.NumberFormat("nl-BE", { style: "currency", currency: "EUR" }).format(n);
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" }).format(n);
 
 export const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString("nl-BE", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+  d ? new Date(d).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }) : "-";
 
 export const dateKey = (date) => new Date(date).toISOString().slice(0, 10);
 
