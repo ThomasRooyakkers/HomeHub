@@ -73,7 +73,13 @@ const PlusIcon = () => (
   </svg>
 );
 
-export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout, settings, onOpenQuickAdd }) {
+const SearchIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>
+  </svg>
+);
+
+export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout, settings, onOpenQuickAdd, onOpenSearch }) {
   const visibleTools = tools.filter(t => t.id !== "admin");
   const isAdmin = currentUser?.role === "admin";
   const appName   = settings?.appName       || "HomeHub";
@@ -91,6 +97,12 @@ export default function Sidebar({ activeTool, setActiveTool, tools, showToast, c
           {household && <div className="sidebar-brand-sub">{household}</div>}
         </div>
       </div>
+
+      <button className="sidebar-search" onClick={onOpenSearch}>
+        <SearchIcon />
+        <span>Search</span>
+        <kbd>Ctrl K</kbd>
+      </button>
 
       {/* Navigation */}
       <nav className="sidebar-nav">

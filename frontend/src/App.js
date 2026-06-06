@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { apiFetch } from "./lib/api";
 import Toast from "./components/Toast";
 import Login from "./components/Login";
@@ -16,6 +16,7 @@ import HouseholdContacts from "./components/HouseholdContacts";
 import HomeInventory from "./components/HomeInventory";
 import Admin from "./components/Admin";
 import QuickAddModal from "./components/QuickAddModal";
+import GlobalSearch from "./components/GlobalSearch";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
@@ -97,6 +98,7 @@ export default function App() {
   const [authChecked, setAuthChecked]       = useState(false);
   const [toast, setToast]                   = useState(null);
   const [quickAddOpen, setQuickAddOpen]     = useState(false);
+  const [searchOpen, setSearchOpen]         = useState(false);
 
   const applySettings = useCallback((s) => {
     setSettings(s);
@@ -283,6 +285,35 @@ export default function App() {
     setTimeout(() => setToast(null), 2800);
   };
 
+  useEffect(() => {
+    const onKey = (event) => {
+      const tag = event.target?.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target?.isContentEditable;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (!isTyping && event.key === "/") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const searchData = useMemo(() => ({
+    invoices,
+    documents,
+    contacts,
+    inventory,
+    recipes,
+    tasks,
+    maintenanceTasks,
+    calendarEvents,
+  }), [invoices, documents, contacts, inventory, recipes, tasks, maintenanceTasks, calendarEvents]);
+
   const toggleInvoicePaid = async (id) => {
     const invoice = invoices.find(i => i.id === id);
     if (!invoice) return;
@@ -351,6 +382,12 @@ export default function App() {
   return (
     <div className="app-root">
       <Toast toast={toast} />
+      <GlobalSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={setActiveTool}
+        searchData={searchData}
+      />
       {quickAddOpen && (
         <QuickAddModal
           onClose={() => setQuickAddOpen(false)}
@@ -363,7 +400,7 @@ export default function App() {
         />
       )}
       <div className="app-layout">
-        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} settings={settings} onOpenQuickAdd={() => setQuickAddOpen(true)} />
+        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} settings={settings} onOpenQuickAdd={() => setQuickAddOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
         <main className="app-main">
           {activeTool === "dashboard" && (
             <ErrorBoundary key="dashboard">
