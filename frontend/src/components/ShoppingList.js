@@ -187,8 +187,8 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
   };
 
   const addPrompt = activeStoreId === "all"
-    ? (stores.length > 0 ? `Add to ${stores[0]?.name}…` : "Add a store first")
-    : `Add to ${activeStore?.name}…`;
+    ? (stores.length > 0 ? `Add to ${stores[0]?.name}...` : "Add a store first")
+    : `Add to ${activeStore?.name}...`;
 
   const iconKey = detectGroceryIcon(quickAdd);
 
@@ -198,7 +198,7 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <div style={{ fontFamily: G.sans, fontSize: 11.5, color: G.sage, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Boodschappenlijst
+            Shopping list
           </div>
           <h1 style={{ fontFamily: G.serif, fontSize: 44, color: G.ink, margin: "4px 0 0", fontWeight: 400, letterSpacing: "-0.5px", lineHeight: 1 }}>
             Shopping
@@ -297,7 +297,7 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
           {/* Items */}
           {unchecked.length === 0 && checked.length === 0 && (
             <p style={{ color: G.muted, textAlign: "center", padding: "40px 0", margin: 0, fontFamily: G.sans }}>
-              No items yet — add one above.
+              No items yet - add one above.
             </p>
           )}
 
@@ -540,7 +540,7 @@ function ItemCard({ item, storeName, storeColor, onToggle, onDelete }) {
             display: "flex", alignItems: "center", justifyContent: "center",
           }}
         >
-          ×
+          x
         </button>
       )}
 

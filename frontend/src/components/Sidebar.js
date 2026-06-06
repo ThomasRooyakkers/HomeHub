@@ -83,7 +83,7 @@ export default function Sidebar({ activeTool, setActiveTool, tools, showToast, c
   const visibleTools = tools.filter(t => t.id !== "admin");
   const isAdmin = currentUser?.role === "admin";
   const appName   = settings?.appName       || "HomeHub";
-  const household = settings?.householdName || "Rooyakkers · Houthalen";
+  const household = settings?.householdName || "My Household";
 
   return (
     <aside className="sidebar">

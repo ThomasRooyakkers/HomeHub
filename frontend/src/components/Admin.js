@@ -170,10 +170,10 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
 
           {/* PWA install info card */}
           <div style={{ background: `linear-gradient(135deg, var(--g-card), var(--g-sky-bg))`, borderRadius: 20, padding: 22, boxShadow: "var(--g-shadow)" }}>
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "var(--g-sky)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Install · iOS</p>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "var(--g-sky)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Install - iOS</p>
             <h3 style={{ margin: "4px 0 8px", fontSize: 20, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Add to Home Screen</h3>
             <p style={{ margin: 0, fontSize: 13, color: "var(--g-ink2)", lineHeight: 1.6 }}>
-              HomeHub runs as a progressive web app — no App Store. Open in Safari → <strong>Share</strong> → <strong>Add to Home Screen</strong>.
+              HomeHub runs as a progressive web app - no App Store. Open in Safari, then <strong>Share</strong>, then <strong>Add to Home Screen</strong>.
             </p>
           </div>
 
@@ -210,7 +210,7 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
             </div>
             <div>
               <label style={labelStyle}>Household name</label>
-              <input style={inputStyle} placeholder="e.g. The Rooyakkers" value={settingsForm.householdName || ""} onChange={e => setSettingsForm(f => ({ ...f, householdName: e.target.value }))} />
+              <input style={inputStyle} placeholder="e.g. The Smiths" value={settingsForm.householdName || ""} onChange={e => setSettingsForm(f => ({ ...f, householdName: e.target.value }))} />
             </div>
             <div>
               <label style={labelStyle}>Currency</label>
@@ -235,7 +235,7 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
               <label style={labelStyle}>Weather location</label>
               <input
                 style={inputStyle}
-                placeholder="e.g. Houthalen-Helchteren"
+                placeholder="e.g. New York"
                 value={settingsForm.location || ""}
                 onChange={e => setSettingsForm(f => ({ ...f, location: e.target.value }))}
               />

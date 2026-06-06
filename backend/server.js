@@ -190,7 +190,7 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-const SAMPLE_SETTINGS = { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a", location: "Houthalen-Helchteren" };
+const SAMPLE_SETTINGS = { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a", location: "New York" };
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
 
