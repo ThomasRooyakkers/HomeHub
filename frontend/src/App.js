@@ -6,6 +6,7 @@ import Sidebar from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
 import InvoiceTracker from "./components/InvoiceTracker";
 import MealPlanner from "./components/MealPlanner";
+import TodoTasks from "./components/TodoTasks";
 import Maintenance from "./components/Maintenance";
 import CalendarView from "./components/CalendarView";
 import PlantManager from "./components/PlantManager";
@@ -23,6 +24,7 @@ const HOME_TOOLS = [
   { id: "invoices",    name: "Invoice Tracker",     shortName: "Invoices",  icon: "🧾", description: "Track household bills, due dates, and payment status.",             active: true,  mobileVisible: true },
   { id: "shopping",    name: "Shopping List",       shortName: "Shopping",  icon: "🛒", description: "BRING-style shopping lists per store.",                            active: true,  mobileVisible: true },
   { id: "meal",        name: "Meal Planner",        shortName: "Meals",     icon: "🍽️", description: "Plan meals and weekly menus for the family.",                       active: true,  mobileVisible: true },
+  { id: "tasks",       name: "Tasks",               shortName: "Tasks",     icon: "OK", description: "Plan one-time and recurring household tasks.",                         active: true,  mobileVisible: true },
   { id: "maintenance", name: "Home Maintenance",    shortName: "Maintain",  icon: "🛠️", description: "Store reminders for repairs and periodic chores.",                  active: true,  mobileVisible: false },
   { id: "calendar",    name: "Calendar",            shortName: "Calendar",  icon: "📅", description: "Import calendars from multiple providers and see upcoming events.",  active: true,  mobileVisible: false },
   { id: "plants",      name: "Plant Manager",       shortName: "Plants",    icon: "🌱", description: "Track watering and feeding schedules for your plants.",             active: true,  mobileVisible: false },
@@ -55,6 +57,8 @@ const SAMPLE_MAINTENANCE = [
   { id: 1, title: "Check Smoke Detectors", frequency: "monthly", nextDue: new Date().toISOString().slice(0, 10), instructions: "Test each smoke detector in the house and replace batteries if needed.", photo: null, completed: false },
 ];
 
+const SAMPLE_TASKS = { items: [], completions: {} };
+
 const SAMPLE_PLANTS = [
   { id: 1, name: "Basil", wateringFrequency: "weekly", lastWatered: "", feedingFrequency: "monthly", lastFed: "", notes: "Keep in sunny window, pinch leaves regularly." },
 ];
@@ -76,6 +80,7 @@ export default function App() {
   const [invoices, setInvoices]             = useState(() => loadLocal("invoices",          SAMPLE_INVOICES));
   const [recipes, setRecipes]               = useState(() => loadLocal("recipes",           SAMPLE_RECIPES));
   const [mealPlan, setMealPlan]             = useState(() => loadLocal("mealPlan",          {}));
+  const [tasks, setTasks]                   = useState(() => loadLocal("tasks",             SAMPLE_TASKS));
   const [maintenanceTasks, setMaintenance]  = useState(() => loadLocal("maintenanceTasks",  SAMPLE_MAINTENANCE));
   const [calendarProviders, setCalProviders]= useState(() => loadLocal("calendarProviders", []));
   const [calendarEvents, setCalEvents]      = useState(() => loadLocal("calendarEvents",    []));
@@ -87,6 +92,7 @@ export default function App() {
   const [settings, setSettings]             = useState(() => loadLocal("settings", { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#5a7a5e", location: "Houthalen-Helchteren" }));
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
+  const [users, setUsers]                   = useState([]);
   const [needsLogin, setNeedsLogin]         = useState(false);
   const [authChecked, setAuthChecked]       = useState(false);
   const [toast, setToast]                   = useState(null);
@@ -108,6 +114,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("invoices",          JSON.stringify(invoices));         } catch {} }, [invoices]);
   useEffect(() => { try { localStorage.setItem("recipes",           JSON.stringify(recipes));          } catch {} }, [recipes]);
   useEffect(() => { try { localStorage.setItem("mealPlan",          JSON.stringify(mealPlan));         } catch {} }, [mealPlan]);
+  useEffect(() => { try { localStorage.setItem("tasks",             JSON.stringify(tasks));            } catch {} }, [tasks]);
   useEffect(() => { try { localStorage.setItem("maintenanceTasks",  JSON.stringify(maintenanceTasks)); } catch {} }, [maintenanceTasks]);
   useEffect(() => { try { localStorage.setItem("calendarProviders", JSON.stringify(calendarProviders));} catch {} }, [calendarProviders]);
   useEffect(() => { try { localStorage.setItem("calendarEvents",    JSON.stringify(calendarEvents));   } catch {} }, [calendarEvents]);
@@ -123,6 +130,7 @@ export default function App() {
       apiFetch("/api/invoices"),
       apiFetch("/api/recipes"),
       apiFetch("/api/meal-plan"),
+      apiFetch("/api/tasks"),
       apiFetch("/api/maintenance"),
       apiFetch("/api/calendar"),
       apiFetch("/api/plants"),
@@ -131,15 +139,17 @@ export default function App() {
       apiFetch("/api/contacts"),
       apiFetch("/api/inventory"),
       apiFetch("/api/settings"),
+      apiFetch("/api/users"),
     ]);
 
-    const [invoiceData, recipeData, mealData, maintenanceData, calendarData, plantData,
-           shoppingData, documentsData, contactsData, inventoryData, settingsData] =
+    const [invoiceData, recipeData, mealData, tasksData, maintenanceData, calendarData, plantData,
+           shoppingData, documentsData, contactsData, inventoryData, settingsData, usersData] =
       results.map(r => r.status === "fulfilled" ? r.value : null);
 
     if (invoiceData) setInvoices(invoiceData);
     if (recipeData) setRecipes(recipeData);
     if (mealData) setMealPlan(mealData);
+    if (tasksData) setTasks(tasksData);
     if (maintenanceData) setMaintenance(maintenanceData);
     if (calendarData) {
       setCalProviders(calendarData.providers || []);
@@ -151,6 +161,7 @@ export default function App() {
     if (contactsData) setContacts(contactsData);
     if (inventoryData) setInventory(inventoryData);
     if (settingsData) applySettings(settingsData);
+    if (usersData) setUsers(usersData);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applySettings]);
 
@@ -192,6 +203,7 @@ export default function App() {
         case "invoices": { const d = await apiFetch("/api/invoices"); if (d) setInvoices(d); break; }
         case "recipes":  { const d = await apiFetch("/api/recipes");  if (d) setRecipes(d);  break; }
         case "mealPlan": { const d = await apiFetch("/api/meal-plan"); if (d) setMealPlan(d); break; }
+        case "tasks": { const d = await apiFetch("/api/tasks"); if (d) setTasks(d); break; }
         case "maintenance": { const d = await apiFetch("/api/maintenance"); if (d) setMaintenance(d); break; }
         case "plants":   { const d = await apiFetch("/api/plants");   if (d) setPlants(d);   break; }
         case "calendar": {
@@ -204,6 +216,7 @@ export default function App() {
         case "contacts":   { const d = await apiFetch("/api/contacts");   if (d) setContacts(d);   break; }
         case "inventory":  { const d = await apiFetch("/api/inventory");  if (d) setInventory(d);  break; }
         case "settings":   { const d = await apiFetch("/api/settings");   if (d) applySettings(d); break; }
+        case "users":      { const d = await apiFetch("/api/users");      if (d) setUsers(d);      break; }
         default: break;
       }
     } catch {}
@@ -388,6 +401,11 @@ export default function App() {
           {activeTool === "meal" && (
             <ErrorBoundary key="meal">
               <MealPlanner recipes={recipes} setRecipes={setRecipes} mealPlan={mealPlan} setMealPlan={setMealPlan} apiEnabled={apiEnabled} showToast={showToast} />
+            </ErrorBoundary>
+          )}
+          {activeTool === "tasks" && (
+            <ErrorBoundary key="tasks">
+              <TodoTasks tasks={tasks} setTasks={setTasks} users={users} currentUser={currentUser} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
           {activeTool === "maintenance" && (

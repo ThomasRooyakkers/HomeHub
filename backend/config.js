@@ -9,6 +9,7 @@ module.exports = {
   INVOICES_FILE: path.join(DATA_DIR, "invoices.json"),
   RECIPES_FILE: path.join(DATA_DIR, "recipes.json"),
   MEALPLAN_FILE: path.join(DATA_DIR, "mealPlan.json"),
+  TASKS_FILE: path.join(DATA_DIR, "tasks.json"),
   MAINTENANCE_FILE: path.join(DATA_DIR, "maintenance.json"),
   CALENDAR_FILE: path.join(DATA_DIR, "calendar.json"),
   PLANTS_FILE: path.join(DATA_DIR, "plants.json"),

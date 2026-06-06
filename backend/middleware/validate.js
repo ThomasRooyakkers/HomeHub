@@ -31,4 +31,29 @@ const validateMaintenanceTask = (body) => {
   if (body.nextDue && !ISO_DATE.test(body.nextDue)) throw bad("nextDue must be in YYYY-MM-DD format");
 };
 
-module.exports = { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask };
+const validateTasksData = (body) => {
+  if (!body || typeof body !== "object" || !Array.isArray(body.items)) {
+    throw bad("tasks.items must be an array");
+  }
+  const completions = body.completions || {};
+  if (typeof completions !== "object" || Array.isArray(completions)) {
+    throw bad("tasks.completions must be an object");
+  }
+  for (const item of body.items) {
+    if (!item.title || !String(item.title).trim()) throw bad("task title is required");
+    if (!["once", "weekday"].includes(item.type)) throw bad("task type must be once or weekday");
+    if (item.type === "once" && (!item.date || !ISO_DATE.test(item.date))) {
+      throw bad("one-time task date must be in YYYY-MM-DD format");
+    }
+    if (item.type === "weekday") {
+      if (!Array.isArray(item.weekdays) || item.weekdays.length === 0) {
+        throw bad("weekday task must include weekdays");
+      }
+      if (item.weekdays.some(d => !Number.isInteger(d) || d < 0 || d > 6)) {
+        throw bad("weekdays must be integers from 0 to 6");
+      }
+    }
+  }
+};
+
+module.exports = { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask, validateTasksData };
