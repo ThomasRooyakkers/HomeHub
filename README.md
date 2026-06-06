@@ -7,8 +7,6 @@ HomeHub is a personal home-management app designed for single-household use. It 
 <img width="1352" height="821" alt="image" src="https://github.com/user-attachments/assets/087c0335-7cba-4215-b356-86afbeede747" />
 
 
-> Add screenshots to `docs/screenshots/` and replace the image path above when ready.
-
 ---
 
 ## Features
