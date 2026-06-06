@@ -19,6 +19,11 @@ const NAV_ICONS = {
       <path d="M7 3v8a2 2 0 002 2v8"/><path d="M11 3v6"/><path d="M7 3v6"/><path d="M17 3c-2 0-3 2-3 5s1 5 3 5v8"/>
     </svg>
   ),
+  tasks: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6l1 1 2-2"/><path d="M4 12l1 1 2-2"/><path d="M4 18l1 1 2-2"/>
+    </svg>
+  ),
   maintenance: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14.7 6.3a4 4 0 105.6 5.6L21 11l-3-3-1 1-2-2 1-1z"/><path d="M14.7 6.3L4 17a2.4 2.4 0 003.4 3.4l10.7-10.7"/>

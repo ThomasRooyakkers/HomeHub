@@ -10,7 +10,7 @@ const rateLimit = require("express-rate-limit");
 const config = require("./config");
 const { diskUpload, memUpload, sanitizeFilename, validateMagicBytes } = require("./middleware/upload");
 const errorHandler = require("./middleware/error");
-const { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask } = require("./middleware/validate");
+const { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask, validateTasksData } = require("./middleware/validate");
 const { extract } = require("./services/ocr");
 
 const {
@@ -19,6 +19,7 @@ const {
   INVOICES_FILE,
   RECIPES_FILE,
   MEALPLAN_FILE,
+  TASKS_FILE,
   MAINTENANCE_FILE,
   CALENDAR_FILE,
   PLANTS_FILE,
@@ -115,6 +116,7 @@ const SAMPLE_MAINTENANCE = [
 ];
 
 const SAMPLE_MEAL_PLAN = {};
+const SAMPLE_TASKS = { items: [], completions: {} };
 const SAMPLE_CALENDAR = { providers: [], events: [] };
 
 const SAMPLE_PLANTS = [
@@ -223,6 +225,11 @@ app.get("/api/auth/me", (req, res) => {
     return res.status(401).json({ error: { code: 401, message: "Not authenticated" } });
   }
   res.json({ id: req.session.userId, username: req.session.username, role: req.session.role || "user" });
+});
+
+app.get("/api/users", (_, res) => {
+  const users = safeLoad(USERS_FILE, []);
+  res.json(users.map(({ passwordHash: _, ...u }) => u));
 });
 
 const generateInvoiceNo = (invoices) => {
@@ -449,6 +456,25 @@ app.put("/api/meal-plan", (req, res, next) => {
 });
 
 // ── Maintenance ───────────────────────────────────────────────────────────────
+
+// Tasks
+app.get("/api/tasks", (_, res) => res.json(safeLoad(TASKS_FILE, SAMPLE_TASKS)));
+
+app.put("/api/tasks", (req, res, next) => {
+  try {
+    const payload = parsePayload(req);
+    const data = {
+      items: Array.isArray(payload?.items) ? payload.items : [],
+      completions: payload?.completions && typeof payload.completions === "object" ? payload.completions : {},
+    };
+    validateTasksData(data);
+    saveFile(TASKS_FILE, data);
+    broadcast("tasks");
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.get("/api/maintenance", (_, res) => res.json(safeLoad(MAINTENANCE_FILE, SAMPLE_MAINTENANCE)));
 
@@ -695,6 +721,7 @@ app.post("/api/admin/users", requireAdmin, async (req, res, next) => {
     const user = { id: crypto.randomUUID(), username, passwordHash, role: ["admin", "user"].includes(role) ? role : "user" };
     users.push(user);
     saveFile(USERS_FILE, users);
+    broadcast("users");
     const { passwordHash: _, ...safe } = user;
     res.json(safe);
   } catch (err) { next(err); }
@@ -719,6 +746,7 @@ app.delete("/api/admin/users/:id", requireAdmin, (req, res, next) => {
     const users = safeLoad(USERS_FILE, []);
     if (!users.find(u => u.id === req.params.id)) return res.status(404).json({ error: { code: 404, message: "User not found" } });
     saveFile(USERS_FILE, users.filter(u => u.id !== req.params.id));
+    broadcast("users");
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -738,6 +766,7 @@ app.get("/api/admin/stats", requireAdmin, (_, res) => {
       counts: {
         invoices:    safeLoad(INVOICES_FILE,   []).length,
         recipes:     safeLoad(RECIPES_FILE,    []).length,
+        tasks:       (safeLoad(TASKS_FILE, SAMPLE_TASKS).items || []).length,
         maintenance: safeLoad(MAINTENANCE_FILE,[]).length,
         plants:      safeLoad(PLANTS_FILE,     []).length,
         contacts:    safeLoad(CONTACTS_FILE,   []).length,
