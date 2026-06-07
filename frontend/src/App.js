@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { apiFetch } from "./lib/api";
+import { cacheUserProfile, clearCachedUserProfile, enqueueSync, loadCachedUserProfile, loadSyncQueue, replaySyncQueue } from "./lib/offlineSync";
 import Toast from "./components/Toast";
 import Login from "./components/Login";
 import Sidebar from "./components/Sidebar";
@@ -34,6 +35,19 @@ const HOME_TOOLS = [
   { id: "inventory",   name: "Home Inventory",      shortName: "Inventory", icon: "🏷️", description: "Track appliances, warranties, and serial numbers.",                 active: true,  mobileVisible: false },
   { id: "admin",       name: "Admin",               shortName: "Admin",     icon: "⚙️", description: "User management, settings, and system stats.",                      active: true,  mobileVisible: false },
 ];
+
+const DEFAULT_ENABLED_FEATURES = HOME_TOOLS
+  .filter(tool => !["dashboard", "admin"].includes(tool.id))
+  .reduce((features, tool) => ({ ...features, [tool.id]: true }), {});
+
+const DEFAULT_SETTINGS = {
+  appName: "HomeHub",
+  householdName: "",
+  currency: "EUR",
+  accentColor: "#5a7a5e",
+  location: "New York",
+  enabledFeatures: DEFAULT_ENABLED_FEATURES,
+};
 
 const SAMPLE_INVOICES = [
   { id: 1, vendor: "Engie",      amount: 187.5, dueDate: "2026-04-15", invoiceNo: "ENG-2026-0041", notes: "Gas & electricity", status: "overdue", file: null },
@@ -90,7 +104,8 @@ export default function App() {
   const [documents, setDocuments]           = useState(() => loadLocal("documents", []));
   const [contacts, setContacts]             = useState(() => loadLocal("contacts",  []));
   const [inventory, setInventory]           = useState(() => loadLocal("inventory", []));
-  const [settings, setSettings]             = useState(() => loadLocal("settings", { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#5a7a5e", location: "New York" }));
+  const [recurringInvoices, setRecurringInvoices] = useState(() => loadLocal("recurringInvoices", []));
+  const [settings, setSettings]             = useState(() => loadLocal("settings", DEFAULT_SETTINGS));
   const [apiEnabled, setApiEnabled]         = useState(false);
   const [currentUser, setCurrentUser]       = useState(null);
   const [users, setUsers]                   = useState([]);
@@ -99,13 +114,29 @@ export default function App() {
   const [toast, setToast]                   = useState(null);
   const [quickAddOpen, setQuickAddOpen]     = useState(false);
   const [searchOpen, setSearchOpen]         = useState(false);
+  const [syncStatus, setSyncStatus]         = useState("online");
+  const [syncQueueCount, setSyncQueueCount] = useState(() => loadSyncQueue().length);
 
   const applySettings = useCallback((s) => {
-    setSettings(s);
-    document.documentElement.style.setProperty("--accent", s.accentColor || "#5a7a5e");
-    document.documentElement.style.setProperty("--accent-dark", adjustColor(s.accentColor || "#5a7a5e", -20));
-    if (s.appName) document.title = s.appName;
+    const normalized = {
+      ...DEFAULT_SETTINGS,
+      ...s,
+      enabledFeatures: { ...DEFAULT_ENABLED_FEATURES, ...(s?.enabledFeatures || {}) },
+    };
+    setSettings(normalized);
+    document.documentElement.style.setProperty("--accent", normalized.accentColor || "#5a7a5e");
+    document.documentElement.style.setProperty("--accent-dark", adjustColor(normalized.accentColor || "#5a7a5e", -20));
+    if (normalized.appName) document.title = normalized.appName;
   }, []);
+
+  const enabledFeatures = useMemo(
+    () => ({ ...DEFAULT_ENABLED_FEATURES, ...(settings.enabledFeatures || {}) }),
+    [settings.enabledFeatures]
+  );
+  const isFeatureEnabled = useCallback((toolId) => (
+    ["dashboard", "admin"].includes(toolId) || enabledFeatures[toolId] !== false
+  ), [enabledFeatures]);
+  const enabledTools = useMemo(() => HOME_TOOLS.filter(tool => isFeatureEnabled(tool.id)), [isFeatureEnabled]);
 
   const calProvidersRef = useRef(calendarProviders);
   const calEventsRef    = useRef(calendarEvents);
@@ -125,7 +156,12 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("documents", JSON.stringify(documents)); } catch {} }, [documents]);
   useEffect(() => { try { localStorage.setItem("contacts",  JSON.stringify(contacts));  } catch {} }, [contacts]);
   useEffect(() => { try { localStorage.setItem("inventory", JSON.stringify(inventory)); } catch {} }, [inventory]);
+  useEffect(() => { try { localStorage.setItem("recurringInvoices", JSON.stringify(recurringInvoices)); } catch {} }, [recurringInvoices]);
   useEffect(() => { try { localStorage.setItem("settings", JSON.stringify(settings)); } catch {} }, [settings]);
+
+  useEffect(() => {
+    if (!isFeatureEnabled(activeTool)) setActiveTool("dashboard");
+  }, [activeTool, isFeatureEnabled]);
 
   const loadBackendData = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -142,10 +178,11 @@ export default function App() {
       apiFetch("/api/inventory"),
       apiFetch("/api/settings"),
       apiFetch("/api/users"),
+      apiFetch("/api/recurring-invoices"),
     ]);
 
     const [invoiceData, recipeData, mealData, tasksData, maintenanceData, calendarData, plantData,
-           shoppingData, documentsData, contactsData, inventoryData, settingsData, usersData] =
+           shoppingData, documentsData, contactsData, inventoryData, settingsData, usersData, recurringData] =
       results.map(r => r.status === "fulfilled" ? r.value : null);
 
     if (invoiceData) setInvoices(invoiceData);
@@ -164,40 +201,104 @@ export default function App() {
     if (inventoryData) setInventory(inventoryData);
     if (settingsData) applySettings(settingsData);
     if (usersData) setUsers(usersData);
+    if (recurringData) setRecurringInvoices(recurringData);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applySettings]);
+
+  const queueMutation = useCallback((mutation) => {
+    const next = enqueueSync(mutation);
+    setSyncQueueCount(next.length);
+    setSyncStatus("offline");
+  }, []);
+
+  const flushSyncQueue = useCallback(async () => {
+    if (!loadSyncQueue().length) return;
+    setSyncStatus("syncing");
+    const remaining = await replaySyncQueue();
+    setSyncQueueCount(remaining.length);
+    if (remaining.length === 0) {
+      setSyncStatus("online");
+      await loadBackendData();
+    } else {
+      setSyncStatus("offline");
+    }
+  }, [loadBackendData]);
 
   // Check auth status on mount
   useEffect(() => {
     const init = async () => {
       try {
         const user = await apiFetch("/api/auth/me");
+        cacheUserProfile(user);
         setCurrentUser(user);
         setApiEnabled(true);
+        setSyncStatus("online");
         await loadBackendData();
+        await flushSyncQueue();
       } catch (err) {
         // Any failure (401 or network down) → require login, no offline access
-        setNeedsLogin(true);
+        const cachedUser = err?.status ? null : loadCachedUserProfile();
+        if (cachedUser) {
+          setCurrentUser(cachedUser);
+          setApiEnabled(false);
+          setNeedsLogin(false);
+          setSyncStatus("offline");
+          setSyncQueueCount(loadSyncQueue().length);
+        } else {
+          setNeedsLogin(true);
+        }
       } finally {
         setAuthChecked(true);
       }
     };
     init();
-  }, [loadBackendData]);
+  }, [loadBackendData, flushSyncQueue]);
 
   const handleLogin = useCallback(async (user) => {
+    cacheUserProfile(user);
     setCurrentUser(user);
     setNeedsLogin(false);
     setApiEnabled(true);
+    setSyncStatus("online");
     await loadBackendData();
-  }, [loadBackendData]);
+    await flushSyncQueue();
+  }, [loadBackendData, flushSyncQueue]);
 
   const handleLogout = useCallback(async () => {
     try { await apiFetch("/api/auth/logout", { method: "POST" }); } catch {}
+    clearCachedUserProfile();
     setCurrentUser(null);
     setApiEnabled(false);
     setNeedsLogin(true);
   }, []);
+
+  useEffect(() => {
+    const tryReconnect = () => {
+      apiFetch("/api/ping")
+        .then(async () => {
+          setApiEnabled(true);
+          setSyncStatus("online");
+          await flushSyncQueue();
+        })
+        .catch(() => setSyncStatus("offline"));
+    };
+    window.addEventListener("online", tryReconnect);
+    return () => window.removeEventListener("online", tryReconnect);
+  }, [flushSyncQueue]);
+
+  useEffect(() => {
+    if (apiEnabled || needsLogin) return;
+    const id = setInterval(() => {
+      apiFetch("/api/ping")
+        .then(async () => {
+          setApiEnabled(true);
+          setSyncStatus("online");
+          await flushSyncQueue();
+        })
+        .catch(() => setSyncStatus("offline"));
+    }, 15000);
+    return () => clearInterval(id);
+  }, [apiEnabled, needsLogin, flushSyncQueue]);
 
   const refreshResource = useCallback(async (resource) => {
     try {
@@ -219,6 +320,7 @@ export default function App() {
         case "inventory":  { const d = await apiFetch("/api/inventory");  if (d) setInventory(d);  break; }
         case "settings":   { const d = await apiFetch("/api/settings");   if (d) applySettings(d); break; }
         case "users":      { const d = await apiFetch("/api/users");      if (d) setUsers(d);      break; }
+        case "recurringInvoices": { const d = await apiFetch("/api/recurring-invoices"); if (d) setRecurringInvoices(d); break; }
         default: break;
       }
     } catch {}
@@ -240,6 +342,7 @@ export default function App() {
     );
     if (!urlProviders.length) return;
     let updated = [...calEventsRef.current];
+    let providers = [...calProvidersRef.current];
     let changed = false;
     for (const cal of urlProviders) {
       try {
@@ -251,21 +354,25 @@ export default function App() {
         if (data?.events?.length) {
           updated = [
             ...updated.filter(e => e.calendarId !== cal.id),
-            ...data.events.map(ev => ({ ...ev, calendarId: cal.id })),
+            ...data.events.map(ev => ({ ...ev, calendarId: cal.id, color: cal.color })),
           ];
+          providers = providers.map(p => p.id === cal.id ? { ...p, lastRefreshAt: new Date().toISOString(), lastError: "", eventCount: data.events.length } : p);
           changed = true;
         }
       } catch (err) {
+        providers = providers.map(p => p.id === cal.id ? { ...p, lastError: err.message || "Refresh failed" } : p);
+        changed = true;
         console.warn("Calendar refresh failed for", cal.provider, err.message);
       }
     }
     if (changed) {
       setCalEvents(updated);
+      setCalProviders(providers);
       try {
         await apiFetch("/api/calendar", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ providers: calProvidersRef.current, events: updated }),
+          body: JSON.stringify({ providers, events: updated }),
         });
       } catch (err) {
         console.warn("Failed to persist refreshed calendar events:", err.message);
@@ -332,6 +439,7 @@ export default function App() {
       }
     }
     setInvoices(prev => prev.map(i => i.id === id ? updated : i));
+    queueMutation({ method: "PUT", endpoint: `/api/invoices/${id}`, body: updated, resource: "invoices", tempId: id });
     showToast("Status updated");
   };
 
@@ -353,6 +461,7 @@ export default function App() {
       }
     }
     setMaintenance(prev => prev.map(t => t.id === id ? updated : t));
+    queueMutation({ method: "PUT", endpoint: `/api/maintenance/${id}`, body: updated, resource: "maintenance", tempId: id });
     showToast("Task updated");
   };
 
@@ -387,6 +496,7 @@ export default function App() {
         onClose={() => setSearchOpen(false)}
         onNavigate={setActiveTool}
         searchData={searchData}
+        enabledFeatures={enabledFeatures}
       />
       {quickAddOpen && (
         <QuickAddModal
@@ -396,11 +506,13 @@ export default function App() {
           setMaintenance={setMaintenance}
           setPlants={setPlants}
           apiEnabled={apiEnabled}
+          queueMutation={queueMutation}
           showToast={showToast}
+          enabledFeatures={enabledFeatures}
         />
       )}
       <div className="app-layout">
-        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={HOME_TOOLS} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} settings={settings} onOpenQuickAdd={() => setQuickAddOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
+        <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} tools={enabledTools} showToast={showToast} currentUser={currentUser} onLogout={handleLogout} settings={settings} syncStatus={syncStatus} syncQueueCount={syncQueueCount} onOpenQuickAdd={() => setQuickAddOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
         <main className="app-main">
           {activeTool === "dashboard" && (
             <ErrorBoundary key="dashboard">
@@ -409,6 +521,7 @@ export default function App() {
                 maintenanceTasks={maintenanceTasks} calendarEvents={calendarEvents}
                 shopping={shopping} plants={plants} currentUser={currentUser}
                 settings={settings}
+                enabledFeatures={enabledFeatures}
                 onNavigate={setActiveTool}
                 onToggleInvoicePaid={toggleInvoicePaid}
                 onToggleMaintenanceDone={toggleMaintenanceDone}
@@ -425,69 +538,70 @@ export default function App() {
                     } catch {}
                   }
                   setPlants(prev => prev.map(p => p.id === id ? updated : p));
+                  queueMutation({ method: "PUT", endpoint: `/api/plants/${id}`, body: updated, resource: "plants", tempId: id });
                   showToast("Watered!");
                 }}
               />
             </ErrorBoundary>
           )}
-          {activeTool === "invoices" && (
+          {activeTool === "invoices" && isFeatureEnabled("invoices") && (
             <ErrorBoundary key="invoices">
-              <InvoiceTracker invoices={invoices} setInvoices={setInvoices} apiEnabled={apiEnabled} showToast={showToast} />
+              <InvoiceTracker invoices={invoices} setInvoices={setInvoices} recurringInvoices={recurringInvoices} setRecurringInvoices={setRecurringInvoices} apiEnabled={apiEnabled} queueMutation={queueMutation} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "meal" && (
+          {activeTool === "meal" && isFeatureEnabled("meal") && (
             <ErrorBoundary key="meal">
-              <MealPlanner recipes={recipes} setRecipes={setRecipes} mealPlan={mealPlan} setMealPlan={setMealPlan} apiEnabled={apiEnabled} showToast={showToast} />
+              <MealPlanner recipes={recipes} setRecipes={setRecipes} mealPlan={mealPlan} setMealPlan={setMealPlan} shopping={shopping} setShopping={setShopping} apiEnabled={apiEnabled} queueMutation={queueMutation} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "tasks" && (
+          {activeTool === "tasks" && isFeatureEnabled("tasks") && (
             <ErrorBoundary key="tasks">
               <TodoTasks tasks={tasks} setTasks={setTasks} users={users} currentUser={currentUser} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "maintenance" && (
+          {activeTool === "maintenance" && isFeatureEnabled("maintenance") && (
             <ErrorBoundary key="maintenance">
               <Maintenance maintenanceTasks={maintenanceTasks} setMaintenanceTasks={setMaintenance} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "calendar" && (
+          {activeTool === "calendar" && isFeatureEnabled("calendar") && (
             <ErrorBoundary key="calendar">
               <CalendarView
                 calendarProviders={calendarProviders} setCalendarProviders={setCalProviders}
                 calendarEvents={calendarEvents} setCalendarEvents={setCalEvents}
-                apiEnabled={apiEnabled} showToast={showToast}
+                apiEnabled={apiEnabled} queueMutation={queueMutation} showToast={showToast}
                 onRefresh={refreshCalendars}
               />
             </ErrorBoundary>
           )}
-          {activeTool === "plants" && (
+          {activeTool === "plants" && isFeatureEnabled("plants") && (
             <ErrorBoundary key="plants">
               <PlantManager plants={plants} setPlants={setPlants} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "shopping" && (
+          {activeTool === "shopping" && isFeatureEnabled("shopping") && (
             <ErrorBoundary key="shopping">
-              <ShoppingList shopping={shopping} setShopping={setShopping} apiEnabled={apiEnabled} showToast={showToast} onRefresh={() => refreshResource("shopping")} />
+              <ShoppingList shopping={shopping} setShopping={setShopping} apiEnabled={apiEnabled} queueMutation={queueMutation} showToast={showToast} onRefresh={() => refreshResource("shopping")} />
             </ErrorBoundary>
           )}
-          {activeTool === "documents" && (
+          {activeTool === "documents" && isFeatureEnabled("documents") && (
             <ErrorBoundary key="documents">
               <DocumentVault documents={documents} setDocuments={setDocuments} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "contacts" && (
+          {activeTool === "contacts" && isFeatureEnabled("contacts") && (
             <ErrorBoundary key="contacts">
               <HouseholdContacts contacts={contacts} setContacts={setContacts} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
-          {activeTool === "inventory" && (
+          {activeTool === "inventory" && isFeatureEnabled("inventory") && (
             <ErrorBoundary key="inventory">
               <HomeInventory inventory={inventory} setInventory={setInventory} documents={documents} apiEnabled={apiEnabled} showToast={showToast} />
             </ErrorBoundary>
           )}
           {activeTool === "admin" && currentUser?.role === "admin" && (
             <ErrorBoundary key="admin">
-              <Admin currentUser={currentUser} settings={settings} applySettings={applySettings} apiEnabled={apiEnabled} showToast={showToast} />
+              <Admin currentUser={currentUser} settings={settings} applySettings={applySettings} apiEnabled={apiEnabled} showToast={showToast} tools={HOME_TOOLS} />
             </ErrorBoundary>
           )}
         </main>

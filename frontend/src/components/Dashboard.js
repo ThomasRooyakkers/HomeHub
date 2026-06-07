@@ -640,9 +640,11 @@ export default function Dashboard({
   plants = [],
   currentUser,
   settings,
+  enabledFeatures = {},
   onNavigate,
   onToggleInvoicePaid, onToggleMaintenanceDone, onWaterPlant,
 }) {
+  const isFeatureEnabled = (feature) => enabledFeatures[feature] !== false;
   const weather = useWeather(settings?.location);
   const todayKey = useTodayKey();
 
@@ -671,13 +673,16 @@ export default function Dashboard({
     return d;
   }, [now]);
 
-  const attentionInvoices = useMemo(() => invoices.filter(i => {
+  const attentionInvoices = useMemo(() => {
+    if (enabledFeatures.invoices === false) return [];
+    return invoices.filter(i => {
     const s = displayStatus(i);
     if (s === "paid") return false;
     if (s === "overdue") return true;
     if (!i.dueDate) return false;
     return new Date(i.dueDate) <= sevenDaysOut;
-  }), [invoices, sevenDaysOut]);
+  });
+  }, [enabledFeatures, invoices, sevenDaysOut]);
 
   const subtitle = useMemo(() => {
     const n = attentionInvoices.length;
@@ -732,42 +737,54 @@ export default function Dashboard({
 
         {/* Left column */}
         <div>
-          <MealCard
-            todayMeal={todayMeal}
-            recipe={todayRecipe}
-            onOpenRecipe={() => onNavigate("meal")}
-          />
-          <BillsCard
-            invoices={invoices}
-            onNavigate={onNavigate}
-            onTogglePaid={onToggleInvoicePaid}
-          />
+          {isFeatureEnabled("meal") && (
+            <MealCard
+              todayMeal={todayMeal}
+              recipe={todayRecipe}
+              onOpenRecipe={() => onNavigate("meal")}
+            />
+          )}
+          {isFeatureEnabled("invoices") && (
+            <BillsCard
+              invoices={invoices}
+              onNavigate={onNavigate}
+              onTogglePaid={onToggleInvoicePaid}
+            />
+          )}
         </div>
 
         {/* Right column */}
         <div>
-          <UpNextCard events={calendarEvents} onNavigate={onNavigate} />
+          {isFeatureEnabled("calendar") && <UpNextCard events={calendarEvents} onNavigate={onNavigate} />}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 0 }}>
-            <MiniCard
-              icon={<IconCart />}
-              value={shoppingUnchecked}
-              label={`Shopping\n${shoppingStores} store${shoppingStores !== 1 ? "s" : ""}`}
-              onClick={() => onNavigate("shopping")}
-            />
-            <MiniCard
-              icon={<IconWrench />}
-              value={maintenanceDueCount}
-              label={"Maintenance\nthis month"}
-              onClick={() => onNavigate("maintenance")}
-            />
-          </div>
+          {(isFeatureEnabled("shopping") || isFeatureEnabled("maintenance")) && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 0 }}>
+              {isFeatureEnabled("shopping") && (
+                <MiniCard
+                  icon={<IconCart />}
+                  value={shoppingUnchecked}
+                  label={`Shopping\n${shoppingStores} store${shoppingStores !== 1 ? "s" : ""}`}
+                  onClick={() => onNavigate("shopping")}
+                />
+              )}
+              {isFeatureEnabled("maintenance") && (
+                <MiniCard
+                  icon={<IconWrench />}
+                  value={maintenanceDueCount}
+                  label={"Maintenance\nthis month"}
+                  onClick={() => onNavigate("maintenance")}
+                />
+              )}
+            </div>
+          )}
 
-          <GardenCard
-            plants={plants}
-            onNavigate={onNavigate}
-            onWaterPlant={onWaterPlant}
-          />
+          {isFeatureEnabled("plants") && (
+            <GardenCard
+              plants={plants}
+              onNavigate={onNavigate}
+              onWaterPlant={onWaterPlant}
+            />
+          )}
         </div>
       </div>
     </div>

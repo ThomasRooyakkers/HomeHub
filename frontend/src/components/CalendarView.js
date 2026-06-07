@@ -9,8 +9,31 @@ const MONTH_NAMES  = ["January","February","March","April","May","June","July","
 
 function providerColor(providers, calendarId) {
   const idx = providers.findIndex(p => p.id === calendarId);
-  return PROVIDER_COLORS[idx >= 0 ? idx % PROVIDER_COLORS.length : 0];
+  return providers[idx]?.color || PROVIDER_COLORS[idx >= 0 ? idx % PROVIDER_COLORS.length : 0];
 }
+
+const eventKey = (event) => `${event.uid || event.id || event.title}-${event.calendarId || "local"}`;
+const dedupeEvents = (events) => {
+  const seen = new Set();
+  return events.filter(event => {
+    const key = `${event.uid || event.id || event.title}|${event.calendarId || "local"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const emptyEvent = (day) => ({
+  id: null,
+  uid: "",
+  title: "",
+  description: "",
+  location: "",
+  start: `${day || dateKey(new Date())}T18:00`,
+  end: `${day || dateKey(new Date())}T19:00`,
+  calendarId: "manual",
+  provider: "Manual",
+});
 
 // ─── Month grid ────────────────────────────────────────────────────────────────
 
@@ -134,7 +157,7 @@ function MonthGrid({ year, month, events, providers, selectedDay, onDayClick, to
 export default function CalendarView({
   calendarProviders, setCalendarProviders,
   calendarEvents, setCalendarEvents,
-  apiEnabled, showToast, onRefresh,
+  apiEnabled, queueMutation, showToast, onRefresh,
 }) {
   const todayKey = useTodayKey();
   const [viewDate,    setViewDate]    = useState(new Date());
@@ -146,12 +169,19 @@ export default function CalendarView({
   const [calUrl,      setCalUrl]      = useState("");
   const [importError, setImportError] = useState("");
   const [importing,   setImporting]   = useState(false);
+  const [eventForm,   setEventForm]   = useState(null);
+  const [eventDetail, setEventDetail] = useState(null);
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") setImportError(""); };
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (eventDetail) { setEventDetail(null); return; }
+      if (eventForm) { setEventForm(null); return; }
+      setImportError("");
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  }, [eventDetail, eventForm]);
 
   const year  = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -191,17 +221,24 @@ export default function CalendarView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providers: nextProviders, events: nextEvents }),
       });
+    } else {
+      queueMutation?.({ method: "PUT", endpoint: "/api/calendar", body: { providers: nextProviders, events: nextEvents }, resource: "calendar" });
     }
   };
 
   const addCalendar = (events, sourceName = null) => {
+    const color = PROVIDER_COLORS[calendarProviders.length % PROVIDER_COLORS.length];
     const cal = {
       id: Date.now(), provider, name: calName || sourceName || provider,
       source: calUrl.trim() || (sourceName ? "file upload" : "unknown"),
       addedAt: new Date().toISOString(),
+      color,
+      lastRefreshAt: new Date().toISOString(),
+      lastError: "",
+      eventCount: events.length,
     };
     const nextProviders = [...calendarProviders, cal];
-    const nextEvents    = [...calendarEvents, ...events.map(ev => ({ ...ev, calendarId: cal.id }))];
+    const nextEvents    = dedupeEvents([...calendarEvents, ...events.map(ev => ({ ...ev, calendarId: cal.id, color }))]);
     setCalendarProviders(nextProviders);
     setCalendarEvents(nextEvents);
     persistCalendar(nextProviders, nextEvents);
@@ -263,6 +300,56 @@ export default function CalendarView({
     showToast("Calendar removed", "danger");
   };
 
+  const updateProviderColor = async (calId, color) => {
+    const nextProviders = calendarProviders.map(p => p.id === calId ? { ...p, color } : p);
+    const nextEvents = calendarEvents.map(e => e.calendarId === calId ? { ...e, color } : e);
+    setCalendarProviders(nextProviders);
+    setCalendarEvents(nextEvents);
+    await persistCalendar(nextProviders, nextEvents);
+  };
+
+  const openEventForm = (event = null) => {
+    const base = event || emptyEvent(selectedDay);
+    setEventForm({
+      ...base,
+      start: base.start ? new Date(base.start).toISOString().slice(0, 16) : emptyEvent(selectedDay).start,
+      end: base.end ? new Date(base.end).toISOString().slice(0, 16) : emptyEvent(selectedDay).end,
+    });
+    setEventDetail(null);
+  };
+
+  const saveEvent = async () => {
+    if (!eventForm?.title?.trim()) return showToast("Event title required", "danger");
+    const id = eventForm.id || Date.now();
+    const uid = eventForm.uid || `manual-${id}`;
+    const event = {
+      ...eventForm,
+      id,
+      uid,
+      title: eventForm.title.trim(),
+      calendarId: eventForm.calendarId || "manual",
+      provider: eventForm.provider || "Manual",
+      start: new Date(eventForm.start).toISOString(),
+      end: new Date(eventForm.end || eventForm.start).toISOString(),
+    };
+    const nextEvents = dedupeEvents(eventForm.id
+      ? calendarEvents.map(e => e.id === eventForm.id || e.uid === eventForm.uid ? event : e)
+      : [...calendarEvents, event]);
+    setCalendarEvents(nextEvents);
+    setEventForm(null);
+    await persistCalendar(calendarProviders, nextEvents);
+    showToast(eventForm.id ? "Event updated" : "Event added");
+  };
+
+  const deleteEvent = async (event) => {
+    const nextEvents = calendarEvents.filter(e => e.id !== event.id && e.uid !== event.uid);
+    setCalendarEvents(nextEvents);
+    setEventDetail(null);
+    setEventForm(null);
+    await persistCalendar(calendarProviders, nextEvents);
+    showToast("Event deleted", "danger");
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -313,6 +400,7 @@ export default function CalendarView({
               <button onClick={nextMonth} style={navBtn}>›</button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={() => openEventForm()} style={ghostBtn}>+ Event</button>
               <button onClick={goToday} style={ghostBtn}>Today</button>
               {calendarProviders.some(p => p.source && !["file upload", "unknown"].includes(p.source)) && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
@@ -359,7 +447,7 @@ export default function CalendarView({
                     width: 10,
                     height: 10,
                     borderRadius: 3,
-                    background: PROVIDER_COLORS[i % PROVIDER_COLORS.length],
+                    background: p.color || PROVIDER_COLORS[i % PROVIDER_COLORS.length],
                     display: "block",
                     flexShrink: 0,
                   }} />
@@ -388,11 +476,18 @@ export default function CalendarView({
                     border: "1px solid var(--g-hair)",
                     borderRadius: 12,
                   }}>
+                    <input
+                      type="color"
+                      value={item.color || PROVIDER_COLORS[i % PROVIDER_COLORS.length]}
+                      onChange={e => updateProviderColor(item.id, e.target.value)}
+                      title="Calendar color"
+                      style={{ width: 28, height: 28, padding: 2, border: "1px solid var(--g-hair)", borderRadius: 8, background: "var(--g-card)", cursor: "pointer", flexShrink: 0 }}
+                    />
                     <span style={{
                       width: 12,
                       height: 12,
                       borderRadius: 4,
-                      background: PROVIDER_COLORS[i % PROVIDER_COLORS.length],
+                      background: item.color || PROVIDER_COLORS[i % PROVIDER_COLORS.length],
                       flexShrink: 0,
                     }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -443,7 +538,7 @@ export default function CalendarView({
                 <h3 style={cardHeading}>{fmtDate(selectedDay)}</h3>
                 {selectedDayEvents.length ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {selectedDayEvents.map(ev => <EventRow key={ev.uid} ev={ev} providers={calendarProviders} />)}
+                    {selectedDayEvents.map(ev => <EventRow key={eventKey(ev)} ev={ev} providers={calendarProviders} onClick={() => setEventDetail(ev)} />)}
                   </div>
                 ) : (
                   <p style={{ margin: 0, color: "var(--g-mute2)", fontSize: 14, fontFamily: "var(--g-sans)" }}>No events on this day.</p>
@@ -457,7 +552,7 @@ export default function CalendarView({
                 </div>
                 {upcomingEvents.length ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {upcomingEvents.map(ev => <EventRow key={ev.uid} ev={ev} providers={calendarProviders} />)}
+                    {upcomingEvents.map(ev => <EventRow key={eventKey(ev)} ev={ev} providers={calendarProviders} onClick={() => setEventDetail(ev)} />)}
                   </div>
                 ) : (
                   <p style={{ margin: 0, color: "var(--g-mute2)", fontSize: 14, fontFamily: "var(--g-sans)" }}>No upcoming events. Import a calendar to see your schedule.</p>
@@ -527,22 +622,80 @@ export default function CalendarView({
 
         </div>
       </div>
+
+      {eventDetail && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setEventDetail(null)}>
+          <div className="modal-box" style={{ maxWidth: 520 }}>
+            <h2 style={{ margin: "0 0 8px", fontSize: 26, fontFamily: "var(--g-serif)", fontWeight: 400, color: "var(--g-ink)" }}>{eventDetail.title}</h2>
+            <p style={{ margin: "0 0 16px", color: "var(--g-muted)", fontSize: 13, fontFamily: "var(--g-sans)" }}>
+              {fmtDate(eventDetail.start)}{eventDetail.end && eventDetail.end !== eventDetail.start ? ` - ${fmtDate(eventDetail.end)}` : ""}
+            </p>
+            {eventDetail.location && <p style={{ margin: "0 0 10px", color: "var(--g-ink2)", fontSize: 14 }}>{eventDetail.location}</p>}
+            {eventDetail.description && <p style={{ margin: "0 0 18px", color: "var(--g-ink2)", fontSize: 14, lineHeight: 1.5 }}>{eventDetail.description}</p>}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => openEventForm(eventDetail)} style={ghostBtn}>Edit</button>
+              <button onClick={() => deleteEvent(eventDetail)} style={{ ...ghostBtn, background: "var(--g-brick-bg)", color: "var(--g-brick)", borderColor: "transparent" }}>Delete</button>
+              <button onClick={() => setEventDetail(null)} style={ghostBtn}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {eventForm && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setEventForm(null)}>
+          <div className="modal-box" style={{ maxWidth: 560 }}>
+            <h2 style={{ margin: "0 0 20px", fontSize: 24, fontFamily: "var(--g-serif)", fontWeight: 400, color: "var(--g-ink)" }}>{eventForm.id ? "Edit event" : "New event"}</h2>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label style={lbl}>Title</label>
+                <input style={inp} value={eventForm.title || ""} onChange={e => setEventForm(f => ({ ...f, title: e.target.value }))} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={lbl}>Start</label>
+                  <input type="datetime-local" style={inp} value={eventForm.start || ""} onChange={e => setEventForm(f => ({ ...f, start: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={lbl}>End</label>
+                  <input type="datetime-local" style={inp} value={eventForm.end || ""} onChange={e => setEventForm(f => ({ ...f, end: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>Location</label>
+                <input style={inp} value={eventForm.location || ""} onChange={e => setEventForm(f => ({ ...f, location: e.target.value }))} />
+              </div>
+              <div>
+                <label style={lbl}>Description</label>
+                <textarea style={{ ...inp, resize: "vertical", minHeight: 90 }} value={eventForm.description || ""} onChange={e => setEventForm(f => ({ ...f, description: e.target.value }))} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button onClick={saveEvent} style={ghostBtn}>Save</button>
+              {eventForm.id && <button onClick={() => deleteEvent(eventForm)} style={{ ...ghostBtn, background: "var(--g-brick-bg)", color: "var(--g-brick)", borderColor: "transparent" }}>Delete</button>}
+              <button onClick={() => setEventForm(null)} style={ghostBtn}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Event row ─────────────────────────────────────────────────────────────────
 
-function EventRow({ ev, providers }) {
+function EventRow({ ev, providers, onClick }) {
   const color = providerColor(providers, ev.calendarId);
   const d = new Date(ev.start);
   const dayNum = d.getDate();
   const dayName = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
   return (
-    <div style={{
+    <button onClick={onClick} style={{
+      all: "unset",
       display: "flex",
       gap: 12,
       alignItems: "flex-start",
+      cursor: "pointer",
+      width: "100%",
     }}>
       {/* Date chip */}
       <div style={{
@@ -600,7 +753,7 @@ function EventRow({ ev, providers }) {
         {ev.location && <p style={{ margin: "2px 0 0", fontSize: 12, fontFamily: "var(--g-sans)", color: "var(--g-mute2)" }}>{ev.location}</p>}
         {ev.description && <p style={{ margin: "3px 0 0", fontSize: 12, fontFamily: "var(--g-sans)", color: "var(--g-mute2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.description}</p>}
       </div>
-    </div>
+    </button>
   );
 }
 

@@ -69,7 +69,7 @@ const btnSecondary = {
   fontFamily: G.sans,
 };
 
-export default function ShoppingList({ shopping, setShopping, apiEnabled, showToast, onRefresh }) {
+export default function ShoppingList({ shopping, setShopping, apiEnabled, queueMutation, showToast, onRefresh }) {
   const { stores = [], items = [] } = shopping;
   const [activeStoreId, setActiveStoreId] = useState("all");
   const [quickAdd, setQuickAdd] = useState("");
@@ -87,7 +87,10 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
   const toggleItem = async (item) => {
     const updated = { ...item, checked: !item.checked };
     setShopping(s => ({ ...s, items: s.items.map(i => i.id === item.id ? updated : i) }));
-    if (!apiEnabled) return;
+    if (!apiEnabled) {
+      queueMutation?.({ method: "PUT", endpoint: `/api/shopping/items/${item.id}`, body: { checked: updated.checked }, resource: "shopping", tempId: item.id });
+      return;
+    }
     try {
       await apiFetch(`/api/shopping/items/${item.id}`, {
         method: "PUT",
@@ -109,7 +112,10 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
     setShopping(s => ({ ...s, items: [...s.items, newItem] }));
     setQuickAdd("");
     quickRef.current?.focus();
-    if (!apiEnabled) return;
+    if (!apiEnabled) {
+      queueMutation?.({ method: "POST", endpoint: "/api/shopping/items", body: { storeId: targetStore.id, name }, resource: "shopping", tempId: newItem.id });
+      return;
+    }
     try {
       const d = await apiFetch("/api/shopping/items", {
         method: "POST",
@@ -124,20 +130,29 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
 
   const deleteItem = async (item) => {
     setShopping(s => ({ ...s, items: s.items.filter(i => i.id !== item.id) }));
-    if (!apiEnabled) return;
+    if (!apiEnabled) {
+      queueMutation?.({ method: "DELETE", endpoint: `/api/shopping/items/${item.id}`, resource: "shopping", tempId: item.id });
+      return;
+    }
     try { await apiFetch(`/api/shopping/items/${item.id}`, { method: "DELETE" }); } catch {}
   };
 
   const clearChecked = async () => {
     if (activeStoreId === "all") {
       setShopping(s => ({ ...s, items: s.items.filter(i => !i.checked) }));
-      if (!apiEnabled) return;
+      if (!apiEnabled) {
+        stores.forEach(store => queueMutation?.({ method: "DELETE", endpoint: `/api/shopping/items/checked?storeId=${store.id}`, resource: "shopping", tempId: store.id }));
+        return;
+      }
       for (const store of stores) {
         try { await apiFetch(`/api/shopping/items/checked?storeId=${store.id}`, { method: "DELETE" }); } catch {}
       }
     } else {
       setShopping(s => ({ ...s, items: s.items.filter(i => !i.checked || i.storeId !== activeStore?.id) }));
-      if (!apiEnabled) return;
+      if (!apiEnabled) {
+        queueMutation?.({ method: "DELETE", endpoint: `/api/shopping/items/checked?storeId=${activeStore?.id}`, resource: "shopping", tempId: activeStore?.id });
+        return;
+      }
       try { await apiFetch(`/api/shopping/items/checked?storeId=${activeStore?.id}`, { method: "DELETE" }); } catch {}
     }
   };
@@ -147,7 +162,10 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
     if (storeModal.id) {
       setShopping(s => ({ ...s, stores: s.stores.map(st => st.id === storeModal.id ? { ...st, ...storeModal } : st) }));
       setStoreModal(null);
-      if (!apiEnabled) return;
+      if (!apiEnabled) {
+        queueMutation?.({ method: "PUT", endpoint: `/api/shopping/stores/${storeModal.id}`, body: { name: storeModal.name, color: storeModal.color }, resource: "shopping", tempId: storeModal.id });
+        return;
+      }
       try {
         await apiFetch(`/api/shopping/stores/${storeModal.id}`, {
           method: "PUT",
@@ -160,7 +178,10 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
       setShopping(s => ({ ...s, stores: [...s.stores, tmp] }));
       setActiveStoreId(tmp.id);
       setStoreModal(null);
-      if (!apiEnabled) return;
+      if (!apiEnabled) {
+        queueMutation?.({ method: "POST", endpoint: "/api/shopping/stores", body: { name: storeModal.name, color: storeModal.color || "#5a7a5e" }, resource: "shopping", tempId: tmp.id });
+        return;
+      }
       try {
         const d = await apiFetch("/api/shopping/stores", {
           method: "POST",
@@ -182,7 +203,10 @@ export default function ShoppingList({ shopping, setShopping, apiEnabled, showTo
     }));
     if (activeStoreId === deleteStoreId) setActiveStoreId("all");
     setDeleteStoreId(null);
-    if (!apiEnabled) return;
+    if (!apiEnabled) {
+      queueMutation?.({ method: "DELETE", endpoint: `/api/shopping/stores/${deleteStoreId}`, resource: "shopping", tempId: deleteStoreId });
+      return;
+    }
     try { await apiFetch(`/api/shopping/stores/${deleteStoreId}`, { method: "DELETE" }); } catch {}
   };
 

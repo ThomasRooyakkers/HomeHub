@@ -10,6 +10,7 @@ const ALLOWED_MIME = [
   "image/png",
   "image/webp",
 ];
+const ZIP_MIME = ["application/zip", "application/x-zip-compressed", "application/octet-stream"];
 
 const ALLOWED_EXT = new Set([".pdf", ".jpg", ".jpeg", ".png", ".webp"]);
 
@@ -46,6 +47,16 @@ const fileFilter = (_, file, cb) => {
   }
 };
 
+const zipFileFilter = (_, file, cb) => {
+  if (ZIP_MIME.includes(file.mimetype) || path.extname(file.originalname).toLowerCase() === ".zip") {
+    cb(null, true);
+  } else {
+    const err = new Error(`Unsupported file type: ${file.mimetype}. Allowed: ZIP.`);
+    err.status = 415;
+    cb(err);
+  }
+};
+
 const sanitizeFilename = (name) =>
   path.basename(name).replace(/[^\w.\-]/g, "_").slice(0, 200);
 
@@ -72,4 +83,10 @@ const memUpload = multer({
   fileFilter,
 });
 
-module.exports = { diskUpload, memUpload, sanitizeFilename, validateMagicBytes };
+const zipUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: Math.max(UPLOAD_MAX_MB, 50) * 1024 * 1024 },
+  fileFilter: zipFileFilter,
+});
+
+module.exports = { diskUpload, memUpload, zipUpload, sanitizeFilename, validateMagicBytes };

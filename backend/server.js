@@ -7,8 +7,9 @@ const session = require("express-session");
 const FileStore = require("session-file-store")(session);
 const bcrypt = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
+const AdmZip = require("adm-zip");
 const config = require("./config");
-const { diskUpload, memUpload, sanitizeFilename, validateMagicBytes } = require("./middleware/upload");
+const { diskUpload, memUpload, zipUpload, sanitizeFilename, validateMagicBytes } = require("./middleware/upload");
 const errorHandler = require("./middleware/error");
 const { validateInvoice, validatePlant, validateRecipe, validateMaintenanceTask, validateTasksData } = require("./middleware/validate");
 const { extract } = require("./services/ocr");
@@ -29,6 +30,8 @@ const {
   DOCUMENTS_FILE,
   CONTACTS_FILE,
   INVENTORY_FILE,
+  ACTIVITY_FILE,
+  RECURRING_INVOICES_FILE,
   CORS_ORIGIN,
   SESSION_SECRET,
   COOKIE_SECURE,
@@ -159,6 +162,116 @@ const parsePayload = (req) => {
 
 const nextId = (items) => items.reduce((max, item) => Math.max(max, item.id || 0), 0) + 1;
 
+const DATA_FILES = {
+  invoices: INVOICES_FILE,
+  recipes: RECIPES_FILE,
+  mealPlan: MEALPLAN_FILE,
+  tasks: TASKS_FILE,
+  maintenance: MAINTENANCE_FILE,
+  calendar: CALENDAR_FILE,
+  plants: PLANTS_FILE,
+  users: USERS_FILE,
+  settings: SETTINGS_FILE,
+  shopping: SHOPPING_FILE,
+  documents: DOCUMENTS_FILE,
+  contacts: CONTACTS_FILE,
+  inventory: INVENTORY_FILE,
+  activity: ACTIVITY_FILE,
+  recurringInvoices: RECURRING_INVOICES_FILE,
+};
+
+const CSV_EXPORTS = {
+  invoices: INVOICES_FILE,
+  documents: DOCUMENTS_FILE,
+  contacts: CONTACTS_FILE,
+  inventory: INVENTORY_FILE,
+  recipes: RECIPES_FILE,
+  maintenance: MAINTENANCE_FILE,
+  plants: PLANTS_FILE,
+};
+
+const csvEscape = (value) => {
+  if (value === null || value === undefined) return "";
+  const s = typeof value === "object" ? JSON.stringify(value) : String(value);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+const toCsv = (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) return "";
+  const headers = [...rows.reduce((set, row) => {
+    Object.keys(row || {}).forEach(k => set.add(k));
+    return set;
+  }, new Set())];
+  return [
+    headers.map(csvEscape).join(","),
+    ...rows.map(row => headers.map(h => csvEscape(row?.[h])).join(",")),
+  ].join("\n");
+};
+
+const safeUser = (req) => ({
+  id: req.session?.userId || null,
+  username: req.session?.username || "system",
+  role: req.session?.role || "unknown",
+});
+
+const logActivity = (req, { resource, action, entityId = null, label = "", details = {} }) => {
+  try {
+    const entries = safeLoad(ACTIVITY_FILE, []);
+    entries.unshift({
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      user: safeUser(req),
+      resource,
+      action,
+      entityId,
+      label,
+      details,
+    });
+    saveFile(ACTIVITY_FILE, entries.slice(0, 2000));
+    broadcast("activity");
+  } catch (err) {
+    console.warn("[activity] failed to write log:", err.message);
+  }
+};
+
+const addFileToZip = (zip, filePath, zipPath) => {
+  if (fs.existsSync(filePath)) zip.addLocalFile(filePath, path.dirname(zipPath), path.basename(zipPath));
+};
+
+const validateRestoreArchive = (zip) => {
+  const entries = zip.getEntries().filter(e => !e.isDirectory);
+  if (!entries.length) throw Object.assign(new Error("Archive is empty"), { status: 400 });
+  for (const entry of entries) {
+    const name = entry.entryName.replace(/\\/g, "/");
+    if (name.includes("..") || path.isAbsolute(name)) {
+      throw Object.assign(new Error("Archive contains unsafe paths"), { status: 400 });
+    }
+    if (name.startsWith("data/")) {
+      const basename = path.basename(name);
+      if (!Object.values(DATA_FILES).some(file => path.basename(file) === basename)) {
+        throw Object.assign(new Error(`Unsupported data file: ${basename}`), { status: 400 });
+      }
+    } else if (name.startsWith("uploads/")) {
+      if (!path.basename(name)) throw Object.assign(new Error("Invalid upload path"), { status: 400 });
+    } else {
+      throw Object.assign(new Error(`Unsupported archive path: ${name}`), { status: 400 });
+    }
+  }
+};
+
+const addMonths = (date, months) => {
+  const d = new Date(`${date}T00:00:00`);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+};
+
+const nextRecurringDueDate = (template) => {
+  const months = template.frequency === "quarterly" ? 3 : template.frequency === "yearly" ? 12 : 1;
+  return addMonths(template.nextDueDate, months);
+};
+
+const recurringPeriodKey = (template) => `${template.id}:${template.nextDueDate}`;
+
 // ── SSE endpoint ─────────────────────────────────────────────────────────────
 
 app.get("/api/events", (req, res) => {
@@ -190,7 +303,28 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-const SAMPLE_SETTINGS = { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a", location: "New York" };
+const DEFAULT_ENABLED_FEATURES = {
+  invoices: true,
+  shopping: true,
+  meal: true,
+  tasks: true,
+  maintenance: true,
+  calendar: true,
+  plants: true,
+  documents: true,
+  contacts: true,
+  inventory: true,
+};
+const SAMPLE_SETTINGS = { appName: "HomeHub", householdName: "", currency: "EUR", accentColor: "#16a34a", location: "New York", enabledFeatures: DEFAULT_ENABLED_FEATURES };
+
+const normalizeSettings = (settings = {}) => ({
+  ...SAMPLE_SETTINGS,
+  ...settings,
+  enabledFeatures: {
+    ...DEFAULT_ENABLED_FEATURES,
+    ...(settings.enabledFeatures && typeof settings.enabledFeatures === "object" ? settings.enabledFeatures : {}),
+  },
+});
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
 
@@ -339,6 +473,7 @@ app.post("/api/invoices", diskUpload.single("file"), (req, res, next) => {
     };
     invoices.push(invoice);
     saveFile(INVOICES_FILE, invoices);
+    logActivity(req, { resource: "invoices", action: "created", entityId: invoice.id, label: invoice.vendor });
     broadcast("invoices");
     res.json(invoice);
   } catch (err) {
@@ -364,6 +499,7 @@ app.put("/api/invoices/:id", diskUpload.single("file"), (req, res, next) => {
         : payload.file ?? invoices[idx].file ?? null,
     };
     saveFile(INVOICES_FILE, invoices);
+    logActivity(req, { resource: "invoices", action: invoices[idx].status === "paid" ? "paid" : "updated", entityId: id, label: invoices[idx].vendor });
     broadcast("invoices");
     res.json(invoices[idx]);
   } catch (err) {
@@ -374,7 +510,9 @@ app.put("/api/invoices/:id", diskUpload.single("file"), (req, res, next) => {
 app.delete("/api/invoices/:id", (req, res, next) => {
   try {
     const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
+    const removed = invoices.find(item => item.id === parseInt(req.params.id, 10));
     saveFile(INVOICES_FILE, invoices.filter(item => item.id !== parseInt(req.params.id, 10)));
+    logActivity(req, { resource: "invoices", action: "deleted", entityId: parseInt(req.params.id, 10), label: removed?.vendor || "" });
     broadcast("invoices");
     res.json({ ok: true });
   } catch (err) {
@@ -580,8 +718,26 @@ app.get("/api/calendar", (_, res) => res.json(safeLoad(CALENDAR_FILE, SAMPLE_CAL
 app.put("/api/calendar", (req, res, next) => {
   try {
     const payload = parsePayload(req);
-    const data = { providers: payload.providers || [], events: payload.events || [] };
+    const providers = (payload.providers || []).map((p, idx) => ({
+      ...p,
+      color: p.color || ["#5a7a5e", "#5d7c95", "#8b5cf6", "#b8853e", "#a85a3e", "#06b6d4", "#ec4899"][idx % 7],
+      lastRefreshAt: p.lastRefreshAt || null,
+      lastError: p.lastError || "",
+      eventCount: p.eventCount ?? (payload.events || []).filter(e => e.calendarId === p.id).length,
+    }));
+    const seen = new Set();
+    const events = (payload.events || []).filter(e => {
+      const key = `${e.uid || e.id || e.title}|${e.calendarId || "manual"}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).map(e => ({
+      ...e,
+      color: e.color || providers.find(p => p.id === e.calendarId)?.color,
+    }));
+    const data = { providers, events };
     saveFile(CALENDAR_FILE, data);
+    logActivity(req, { resource: "calendar", action: "updated", label: `${data.providers.length} providers` });
     broadcast("calendar");
     res.json(data);
   } catch (err) {
@@ -598,6 +754,7 @@ app.delete("/api/calendar/providers/:id", (req, res, next) => {
       events: calendar.events.filter(e => e.calendarId !== calId),
     };
     saveFile(CALENDAR_FILE, data);
+    logActivity(req, { resource: "calendar", action: "provider_deleted", entityId: calId });
     broadcast("calendar");
     res.json(data);
   } catch (err) {
@@ -672,6 +829,7 @@ app.post("/api/calendar-import", async (req, res, next) => {
       return res.status(400).json({ error: { code: 400, message: "The calendar was imported successfully but contains no events." } });
     }
 
+    logActivity(req, { resource: "calendar", action: "imported", label: provider || "Calendar", details: { count: events.length } });
     res.json({ events, count: events.length });
   } catch (error) {
     clearTimeout(timeout);
@@ -684,12 +842,12 @@ app.post("/api/calendar-import", async (req, res, next) => {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-app.get("/api/settings", (_, res) => res.json(safeLoad(SETTINGS_FILE, SAMPLE_SETTINGS)));
+app.get("/api/settings", (_, res) => res.json(normalizeSettings(safeLoad(SETTINGS_FILE, SAMPLE_SETTINGS))));
 
 app.put("/api/settings", requireAdmin, (req, res, next) => {
   try {
-    const current = safeLoad(SETTINGS_FILE, SAMPLE_SETTINGS);
-    const { appName, householdName, currency, accentColor, location } = parsePayload(req);
+    const current = normalizeSettings(safeLoad(SETTINGS_FILE, SAMPLE_SETTINGS));
+    const { appName, householdName, currency, accentColor, location, enabledFeatures } = parsePayload(req);
     const updated = {
       ...current,
       ...(appName !== undefined && { appName: String(appName).trim() || current.appName }),
@@ -697,8 +855,14 @@ app.put("/api/settings", requireAdmin, (req, res, next) => {
       ...(currency !== undefined && { currency: String(currency) }),
       ...(accentColor !== undefined && { accentColor: String(accentColor) }),
       ...(location !== undefined && { location: String(location).trim() }),
+      ...(enabledFeatures && typeof enabledFeatures === "object" && {
+        enabledFeatures: Object.fromEntries(
+          Object.keys(DEFAULT_ENABLED_FEATURES).map(key => [key, enabledFeatures[key] !== false])
+        ),
+      }),
     };
     saveFile(SETTINGS_FILE, updated);
+    logActivity(req, { resource: "settings", action: "updated", label: "App settings" });
     broadcast("settings");
     res.json(updated);
   } catch (err) { next(err); }
@@ -721,6 +885,7 @@ app.post("/api/admin/users", requireAdmin, async (req, res, next) => {
     const user = { id: crypto.randomUUID(), username, passwordHash, role: ["admin", "user"].includes(role) ? role : "user" };
     users.push(user);
     saveFile(USERS_FILE, users);
+    logActivity(req, { resource: "users", action: "created", entityId: user.id, label: user.username });
     broadcast("users");
     const { passwordHash: _, ...safe } = user;
     res.json(safe);
@@ -736,6 +901,7 @@ app.put("/api/admin/users/:id/password", requireAdmin, async (req, res, next) =>
     if (idx === -1) return res.status(404).json({ error: { code: 404, message: "User not found" } });
     users[idx].passwordHash = await bcrypt.hash(password, 12);
     saveFile(USERS_FILE, users);
+    logActivity(req, { resource: "users", action: "password_changed", entityId: users[idx].id, label: users[idx].username });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -745,7 +911,9 @@ app.delete("/api/admin/users/:id", requireAdmin, (req, res, next) => {
     if (req.params.id === req.session.userId) return res.status(400).json({ error: { code: 400, message: "Cannot delete your own account" } });
     const users = safeLoad(USERS_FILE, []);
     if (!users.find(u => u.id === req.params.id)) return res.status(404).json({ error: { code: 404, message: "User not found" } });
+    const removed = users.find(u => u.id === req.params.id);
     saveFile(USERS_FILE, users.filter(u => u.id !== req.params.id));
+    logActivity(req, { resource: "users", action: "deleted", entityId: req.params.id, label: removed?.username || "" });
     broadcast("users");
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -779,6 +947,190 @@ app.get("/api/admin/stats", requireAdmin, (_, res) => {
 });
 
 // ── Shopping ──────────────────────────────────────────────────────────────────
+
+app.get("/api/admin/export.zip", requireAdmin, (req, res, next) => {
+  try {
+    const zip = new AdmZip();
+    for (const filePath of Object.values(DATA_FILES)) {
+      if (fs.existsSync(filePath)) addFileToZip(zip, filePath, `data/${path.basename(filePath)}`);
+      else zip.addFile(`data/${path.basename(filePath)}`, Buffer.from("[]"));
+    }
+    if (fs.existsSync(UPLOADS_DIR)) {
+      for (const filename of fs.readdirSync(UPLOADS_DIR)) {
+        const filePath = path.join(UPLOADS_DIR, filename);
+        if (fs.statSync(filePath).isFile()) zip.addLocalFile(filePath, "uploads");
+      }
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    logActivity(req, { resource: "backup", action: "exported", label: `homehub-backup-${stamp}.zip` });
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="homehub-backup-${stamp}.zip"`);
+    res.send(zip.toBuffer());
+  } catch (err) { next(err); }
+});
+
+app.post("/api/admin/restore", requireAdmin, zipUpload.single("file"), (req, res, next) => {
+  try {
+    if (!req.file?.buffer) return res.status(400).json({ error: { code: 400, message: "ZIP file required" } });
+    const zip = new AdmZip(req.file.buffer);
+    validateRestoreArchive(zip);
+    const tmpDir = fs.mkdtempSync(path.join(config.DATA_DIR, "restore-"));
+    const tmpUploads = path.join(tmpDir, "uploads");
+    fs.mkdirSync(tmpUploads, { recursive: true });
+
+    for (const entry of zip.getEntries().filter(e => !e.isDirectory)) {
+      const name = entry.entryName.replace(/\\/g, "/");
+      if (name.startsWith("data/")) {
+        const targetName = path.basename(name);
+        const raw = entry.getData().toString("utf8");
+        JSON.parse(raw);
+        fs.writeFileSync(path.join(tmpDir, targetName), raw);
+      } else if (name.startsWith("uploads/")) {
+        fs.writeFileSync(path.join(tmpUploads, path.basename(name)), entry.getData());
+      }
+    }
+    for (const filePath of Object.values(DATA_FILES)) {
+      const staged = path.join(tmpDir, path.basename(filePath));
+      if (fs.existsSync(staged)) fs.copyFileSync(staged, filePath);
+    }
+    fs.rmSync(UPLOADS_DIR, { recursive: true, force: true });
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    for (const filename of fs.readdirSync(tmpUploads)) {
+      fs.copyFileSync(path.join(tmpUploads, filename), path.join(UPLOADS_DIR, filename));
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    logActivity(req, { resource: "backup", action: "restored", label: sanitizeFilename(req.file.originalname) });
+    Object.keys(DATA_FILES).forEach(resource => broadcast(resource));
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/admin/export/:resource.csv", requireAdmin, (req, res, next) => {
+  try {
+    const filePath = CSV_EXPORTS[req.params.resource];
+    if (!filePath) return res.status(404).json({ error: { code: 404, message: "CSV export not found" } });
+    const rows = safeLoad(filePath, []);
+    logActivity(req, { resource: req.params.resource, action: "csv_exported", label: `${req.params.resource}.csv` });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.resource}.csv"`);
+    res.send(toCsv(Array.isArray(rows) ? rows : [rows]));
+  } catch (err) { next(err); }
+});
+
+app.get("/api/activity", requireAdmin, (req, res) => {
+  let entries = safeLoad(ACTIVITY_FILE, []);
+  const { user, resource, action } = req.query;
+  if (user) entries = entries.filter(e => e.user?.username === user || e.user?.id === user);
+  if (resource) entries = entries.filter(e => e.resource === resource);
+  if (action) entries = entries.filter(e => e.action === action);
+  res.json(entries);
+});
+
+app.delete("/api/activity", requireAdmin, (req, res, next) => {
+  try {
+    saveFile(ACTIVITY_FILE, []);
+    logActivity(req, { resource: "activity", action: "cleared", label: "Activity log cleared" });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/recurring-invoices", (_, res) => res.json(safeLoad(RECURRING_INVOICES_FILE, [])));
+
+app.post("/api/recurring-invoices", (req, res, next) => {
+  try {
+    const templates = safeLoad(RECURRING_INVOICES_FILE, []);
+    const payload = parsePayload(req);
+    const template = {
+      id: nextId(templates),
+      vendor: String(payload.vendor || "").trim(),
+      amount: Number(payload.amount || 0),
+      category: payload.category || "Subscriptions",
+      frequency: ["monthly", "quarterly", "yearly"].includes(payload.frequency) ? payload.frequency : "monthly",
+      dayOfMonth: Number(payload.dayOfMonth || new Date().getDate()),
+      nextDueDate: payload.nextDueDate || new Date().toISOString().slice(0, 10),
+      notes: payload.notes || "",
+      active: payload.active !== false,
+    };
+    if (!template.vendor || !template.amount) return res.status(400).json({ error: { code: 400, message: "vendor and amount required" } });
+    templates.push(template);
+    saveFile(RECURRING_INVOICES_FILE, templates);
+    logActivity(req, { resource: "recurringInvoices", action: "created", entityId: template.id, label: template.vendor });
+    broadcast("recurringInvoices");
+    res.json(template);
+  } catch (err) { next(err); }
+});
+
+app.put("/api/recurring-invoices/:id", (req, res, next) => {
+  try {
+    const templates = safeLoad(RECURRING_INVOICES_FILE, []);
+    const id = parseInt(req.params.id, 10);
+    const idx = templates.findIndex(t => t.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Template not found" } });
+    const payload = parsePayload(req);
+    templates[idx] = {
+      ...templates[idx],
+      ...payload,
+      id,
+      amount: Number(payload.amount ?? templates[idx].amount),
+      frequency: ["monthly", "quarterly", "yearly"].includes(payload.frequency) ? payload.frequency : templates[idx].frequency,
+      active: payload.active !== undefined ? Boolean(payload.active) : templates[idx].active,
+    };
+    saveFile(RECURRING_INVOICES_FILE, templates);
+    logActivity(req, { resource: "recurringInvoices", action: "updated", entityId: id, label: templates[idx].vendor });
+    broadcast("recurringInvoices");
+    res.json(templates[idx]);
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/recurring-invoices/:id", (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const templates = safeLoad(RECURRING_INVOICES_FILE, []);
+    const template = templates.find(t => t.id === id);
+    saveFile(RECURRING_INVOICES_FILE, templates.filter(t => t.id !== id));
+    logActivity(req, { resource: "recurringInvoices", action: "deleted", entityId: id, label: template?.vendor || "" });
+    broadcast("recurringInvoices");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/recurring-invoices/:id/generate", (req, res, next) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const templates = safeLoad(RECURRING_INVOICES_FILE, []);
+    const id = parseInt(req.params.id, 10);
+    const idx = templates.findIndex(t => t.id === id);
+    if (idx === -1) return res.status(404).json({ error: { code: 404, message: "Template not found" } });
+    const template = templates[idx];
+    if (template.active === false) return res.status(400).json({ error: { code: 400, message: "Template is inactive" } });
+    if (template.nextDueDate > today) return res.status(409).json({ error: { code: 409, message: "Next invoice is not due yet" } });
+    const invoices = safeLoad(INVOICES_FILE, SAMPLE_INVOICES);
+    const periodKey = recurringPeriodKey(template);
+    const existing = invoices.find(inv => inv.recurringTemplateId === template.id && inv.recurringPeriodKey === periodKey);
+    if (existing) return res.json({ invoice: existing, template, skipped: true });
+    const invoice = {
+      id: nextId(invoices),
+      vendor: template.vendor,
+      amount: template.amount,
+      dueDate: template.nextDueDate,
+      invoiceNo: generateInvoiceNo(invoices),
+      notes: template.notes,
+      category: template.category,
+      status: "unpaid",
+      file: null,
+      recurringTemplateId: template.id,
+      recurringPeriodKey: periodKey,
+    };
+    invoices.push(invoice);
+    templates[idx] = { ...template, nextDueDate: nextRecurringDueDate(template) };
+    saveFile(INVOICES_FILE, invoices);
+    saveFile(RECURRING_INVOICES_FILE, templates);
+    logActivity(req, { resource: "invoices", action: "created", entityId: invoice.id, label: invoice.vendor, details: { recurringTemplateId: template.id } });
+    broadcast("invoices");
+    broadcast("recurringInvoices");
+    res.json({ invoice, template: templates[idx], skipped: false });
+  } catch (err) { next(err); }
+});
 
 const SAMPLE_SHOPPING = { stores: [], items: [] };
 const nextShoppingId = (arr) => arr.reduce((m, i) => Math.max(m, i.id || 0), 0) + 1;
@@ -891,6 +1243,7 @@ app.post("/api/documents", diskUpload.single("file"), (req, res, next) => {
     };
     docs.push(doc);
     saveFile(DOCUMENTS_FILE, docs);
+    logActivity(req, { resource: "documents", action: "created", entityId: doc.id, label: doc.title || doc.originalName || "" });
     broadcast("documents");
     res.json(doc);
   } catch (err) { next(err); }
@@ -914,6 +1267,7 @@ app.put("/api/documents/:id", diskUpload.single("file"), (req, res, next) => {
       ...(req.file && { file: req.file.filename, originalName: sanitizeFilename(req.file.originalname) }),
     };
     saveFile(DOCUMENTS_FILE, docs);
+    logActivity(req, { resource: "documents", action: "updated", entityId: id, label: docs[idx].title || docs[idx].originalName || "" });
     broadcast("documents");
     res.json(docs[idx]);
   } catch (err) { next(err); }
@@ -925,6 +1279,7 @@ app.delete("/api/documents/:id", (req, res, next) => {
     const doc = docs.find(d => d.id === parseInt(req.params.id, 10));
     if (doc?.file) { try { fs.unlinkSync(path.join(UPLOADS_DIR, doc.file)); } catch {} }
     saveFile(DOCUMENTS_FILE, docs.filter(d => d.id !== parseInt(req.params.id, 10)));
+    logActivity(req, { resource: "documents", action: "deleted", entityId: parseInt(req.params.id, 10), label: doc?.title || doc?.originalName || "" });
     broadcast("documents");
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -986,6 +1341,7 @@ app.post("/api/inventory", diskUpload.single("photo"), (req, res, next) => {
     };
     items.push(item);
     saveFile(INVENTORY_FILE, items);
+    logActivity(req, { resource: "inventory", action: "created", entityId: item.id, label: item.name || "" });
     broadcast("inventory");
     res.json(item);
   } catch (err) { next(err); }
@@ -1006,6 +1362,7 @@ app.put("/api/inventory/:id", diskUpload.single("photo"), (req, res, next) => {
       photo: req.file ? `/uploads/${req.file.filename}` : payload.photo ?? items[idx].photo ?? null,
     };
     saveFile(INVENTORY_FILE, items);
+    logActivity(req, { resource: "inventory", action: "updated", entityId: id, label: items[idx].name || "" });
     broadcast("inventory");
     res.json(items[idx]);
   } catch (err) { next(err); }
@@ -1014,7 +1371,9 @@ app.put("/api/inventory/:id", diskUpload.single("photo"), (req, res, next) => {
 app.delete("/api/inventory/:id", (req, res, next) => {
   try {
     const items = safeLoad(INVENTORY_FILE, []);
+    const removed = items.find(i => i.id === parseInt(req.params.id, 10));
     saveFile(INVENTORY_FILE, items.filter(i => i.id !== parseInt(req.params.id, 10)));
+    logActivity(req, { resource: "inventory", action: "deleted", entityId: parseInt(req.params.id, 10), label: removed?.name || "" });
     broadcast("inventory");
     res.json({ ok: true });
   } catch (err) { next(err); }

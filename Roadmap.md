@@ -22,33 +22,6 @@ Implementation details:
 - Add a new Admin `Data` tab with backup, restore, and CSV export controls.
 - Restrict all actions to admin users.
 
-## 2. Global Search
-
-Add a global search overlay opened from the sidebar or header.
-
-Search across:
-
-- Invoices: vendor, invoice number, notes, category
-- Documents: title, category, notes, original filename
-- Contacts: name, company, role, phone, email, notes
-- Inventory: name, brand, serial, room, notes
-- Recipes: name, ingredients, instructions
-- Tasks and maintenance
-- Calendar events
-
-Implementation details:
-
-- Build the first version frontend-only using the loaded `App.js` state.
-- Add result grouping by module.
-- Clicking a result should navigate to the relevant module.
-- Later iteration can deep-link into exact item modals.
-
-Likely files:
-
-- `frontend/src/App.js`
-- `frontend/src/components/Sidebar.js`
-- `frontend/src/components/GlobalSearch.js`
-
 ## 3. Activity Log
 
 Add an audit trail for important actions.

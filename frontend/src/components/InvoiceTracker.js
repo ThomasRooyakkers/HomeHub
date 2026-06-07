@@ -5,6 +5,7 @@ import { fmt, fmtDate, displayStatus } from "../lib/utils";
 const STATUSES = { ALL: "all", UNPAID: "unpaid", PAID: "paid", OVERDUE: "overdue" };
 const CATEGORIES = ["Utilities", "Rent", "Internet", "Insurance", "Subscriptions", "Other"];
 const EMPTY_FORM = { id: null, vendor: "", amount: "", dueDate: "", invoiceNo: "", structuredMessage: "", notes: "", category: "", status: "unpaid", file: null };
+const EMPTY_RECURRING = { vendor: "", amount: "", category: "Subscriptions", frequency: "monthly", dayOfMonth: new Date().getDate(), nextDueDate: new Date().toISOString().slice(0, 10), notes: "", active: true };
 const FIELDS = [["Vendor", "vendor"], ["Amount", "amount"], ["Due date", "dueDate"], ["Invoice #", "invoiceNo"], ["Structured msg", "structuredMessage"]];
 
 const isPdfFile = (file) => {
@@ -41,10 +42,12 @@ const iconColor = (status) => {
   }
 };
 
-export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, showToast }) {
+export default function InvoiceTracker({ invoices, setInvoices, recurringInvoices = [], setRecurringInvoices, apiEnabled, queueMutation, showToast }) {
+  const [view, setView] = useState("invoices");
   const [filter, setFilter] = useState(STATUSES.ALL);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(null);
+  const [recurringForm, setRecurringForm] = useState(null);
   const [step, setStep] = useState(null); // 'upload' | 'edit'
   const [isDragging, setIsDragging] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
@@ -311,8 +314,11 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
 
     if (form.id) {
       setInvoices((prev) => prev.map((i) => i.id === form.id ? { ...payload } : i));
+      if (!_file) queueMutation?.({ method: "PUT", endpoint: `/api/invoices/${form.id}`, body: payload, resource: "invoices", tempId: form.id });
     } else {
-      setInvoices((prev) => [...prev, { ...payload, id: Date.now() }]);
+      const local = { ...payload, id: Date.now() };
+      setInvoices((prev) => [...prev, local]);
+      if (!_file) queueMutation?.({ method: "POST", endpoint: "/api/invoices", body: local, resource: "invoices", tempId: local.id });
     }
     showToast(form.id ? "Invoice updated" : "Invoice added");
     closeModal();
@@ -336,6 +342,7 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       }
     }
     setInvoices((prev) => prev.map((i) => i.id === id ? updated : i));
+    queueMutation?.({ method: "PUT", endpoint: `/api/invoices/${id}`, body: updated, resource: "invoices", tempId: id });
     showToast("Status updated");
   };
 
@@ -350,8 +357,62 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       }
     }
     setInvoices((prev) => prev.filter((i) => i.id !== deleteId));
+    queueMutation?.({ method: "DELETE", endpoint: `/api/invoices/${deleteId}`, resource: "invoices", tempId: deleteId });
     setDeleteId(null);
     showToast("Invoice deleted", "danger");
+  };
+
+  const saveRecurring = async () => {
+    if (!recurringForm?.vendor?.trim() || !recurringForm?.amount) return showToast("Vendor and amount required", "danger");
+    const payload = { ...recurringForm, amount: Number(recurringForm.amount), dayOfMonth: Number(recurringForm.dayOfMonth || 1) };
+    if (apiEnabled) {
+      try {
+        const method = payload.id ? "PUT" : "POST";
+        const endpoint = payload.id ? `/api/recurring-invoices/${payload.id}` : "/api/recurring-invoices";
+        const result = await apiFetch(endpoint, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        setRecurringInvoices(prev => payload.id ? prev.map(t => t.id === payload.id ? result : t) : [...prev, result]);
+        setRecurringForm(null);
+        showToast(payload.id ? "Template updated" : "Template added");
+        return;
+      } catch (err) {
+        showToast(err.message || "Failed to save template", "danger");
+        return;
+      }
+    }
+    if (payload.id) {
+      setRecurringInvoices(prev => prev.map(t => t.id === payload.id ? payload : t));
+      queueMutation?.({ method: "PUT", endpoint: `/api/recurring-invoices/${payload.id}`, body: payload, resource: "recurringInvoices", tempId: payload.id });
+    } else {
+      const local = { ...payload, id: Date.now() };
+      setRecurringInvoices(prev => [...prev, local]);
+      queueMutation?.({ method: "POST", endpoint: "/api/recurring-invoices", body: local, resource: "recurringInvoices", tempId: local.id });
+    }
+    setRecurringForm(null);
+    showToast(payload.id ? "Template updated" : "Template added");
+  };
+
+  const deleteRecurring = async (id) => {
+    if (apiEnabled) {
+      try { await apiFetch(`/api/recurring-invoices/${id}`, { method: "DELETE" }); }
+      catch (err) { showToast(err.message || "Delete failed", "danger"); return; }
+    }
+    setRecurringInvoices(prev => prev.filter(t => t.id !== id));
+    queueMutation?.({ method: "DELETE", endpoint: `/api/recurring-invoices/${id}`, resource: "recurringInvoices", tempId: id });
+    showToast("Template deleted", "danger");
+  };
+
+  const generateRecurring = async (template) => {
+    if (!apiEnabled) return showToast("Recurring generation requires the backend", "danger");
+    try {
+      const result = await apiFetch(`/api/recurring-invoices/${template.id}/generate`, { method: "POST" });
+      if (result?.invoice) {
+        setInvoices(prev => prev.some(i => i.id === result.invoice.id) ? prev : [...prev, result.invoice]);
+      }
+      if (result?.template) setRecurringInvoices(prev => prev.map(t => t.id === template.id ? result.template : t));
+      showToast(result?.skipped ? "Invoice already exists for this period" : "Invoice generated");
+    } catch (err) {
+      showToast(err.message || "Generation failed", "danger");
+    }
   };
 
   const totalUnpaid = invoices.filter((i) => displayStatus(i) !== "paid").reduce((a, i) => a + parseFloat(i.amount || 0), 0);
@@ -388,6 +449,20 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       </div>
 
       {/* ── Stats row ──────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {[["Invoices", "invoices"], ["Recurring", "recurring"]].map(([label, val]) => (
+          <button key={val} onClick={() => setView(val)} style={{
+            padding: "8px 18px", borderRadius: 999,
+            border: view === val ? "1.5px solid var(--g-sage)" : "1.5px solid var(--g-hair)",
+            background: view === val ? "var(--g-sage-bg)" : "var(--g-card)",
+            color: view === val ? "var(--g-sage-dark)" : "var(--g-muted)",
+            fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--g-sans)",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {view === "invoices" && (
+        <>
       <div className="stats-grid-3">
         {[
           { label: "Outstanding", value: fmt(totalUnpaid), underline: "var(--g-brick)" },
@@ -520,6 +595,45 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       </div>
 
       {/* ── Step 1: Upload popup ────────────────────────────────────────────── */}
+        </>
+      )}
+
+      {view === "recurring" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Recurring templates</h3>
+            <button onClick={() => setRecurringForm({ ...EMPTY_RECURRING })} style={primaryBtnStyle}>+ New template</button>
+          </div>
+          <div style={{ background: "var(--g-card)", borderRadius: 16, boxShadow: "var(--g-shadow-sm)", overflow: "hidden" }}>
+            {recurringInvoices.length === 0 ? (
+              <div style={{ textAlign: "center", color: "var(--g-muted)", padding: "48px 0", fontSize: 15, fontFamily: "var(--g-sans)" }}>No recurring templates yet.</div>
+            ) : recurringInvoices.map((t, idx) => {
+              const due = t.nextDueDate && t.nextDueDate <= new Date().toISOString().slice(0, 10);
+              return (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 24px", flexWrap: "wrap", borderTop: idx === 0 ? "none" : "1px solid var(--g-hair2)" }}>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <strong style={{ color: "var(--g-ink)", fontFamily: "var(--g-sans)" }}>{t.vendor}</strong>
+                      <span style={{ background: due ? "var(--g-honey-bg)" : "var(--g-sage-bg)", color: due ? "var(--g-honey)" : "var(--g-sage-dark)", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 999, fontFamily: "var(--g-sans)" }}>{due ? "Due" : "Scheduled"}</span>
+                      {t.active === false && <span style={{ color: "var(--g-muted)", fontSize: 12 }}>Inactive</span>}
+                    </div>
+                    <div style={{ marginTop: 4, color: "var(--g-muted)", fontSize: 13, fontFamily: "var(--g-sans)" }}>
+                      {t.frequency} - next due {fmtDate(t.nextDueDate)} - {t.category}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 400, color: "var(--g-ink)", fontFamily: "var(--g-serif)", minWidth: 80, textAlign: "right" }}>{fmt(t.amount)}</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => generateRecurring(t)} style={due ? primaryBtnStyle : cancelBtnStyle}>Generate</button>
+                    <button onClick={() => setRecurringForm({ ...t })} style={iconBtnStyle}>Edit</button>
+                    <button onClick={() => deleteRecurring(t.id)} style={{ ...iconBtnStyle, color: "var(--g-brick)" }}>Delete</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {form && step === "upload" && (
         <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && closeModal()}>
           <div className="modal-box" style={{ maxWidth: 480 }}>
@@ -806,6 +920,48 @@ export default function InvoiceTracker({ invoices, setInvoices, apiEnabled, show
       })()}
 
       {/* ── Delete confirmation ─────────────────────────────────────────────── */}
+      {recurringForm && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setRecurringForm(null)}>
+          <div className="modal-box" style={{ maxWidth: 520 }}>
+            <h3 style={{ margin: "0 0 20px", fontSize: 24, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>{recurringForm.id ? "Edit template" : "New recurring template"}</h3>
+            <div style={{ display: "grid", gap: 12 }}>
+              {[["Vendor", "vendor", "text"], ["Amount", "amount", "number"], ["Next due date", "nextDueDate", "date"], ["Day of month", "dayOfMonth", "number"]].map(([label, key, type]) => (
+                <div key={key}>
+                  <label style={labelStyle}>{label}</label>
+                  <input type={type} value={recurringForm[key] || ""} onChange={e => setRecurringForm(f => ({ ...f, [key]: e.target.value }))} style={fieldStyle(recurringForm[key])} />
+                </div>
+              ))}
+              <div>
+                <label style={labelStyle}>Category</label>
+                <select value={recurringForm.category || "Subscriptions"} onChange={e => setRecurringForm(f => ({ ...f, category: e.target.value }))} style={fieldStyle(recurringForm.category)}>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Frequency</label>
+                <select value={recurringForm.frequency || "monthly"} onChange={e => setRecurringForm(f => ({ ...f, frequency: e.target.value }))} style={fieldStyle(recurringForm.frequency)}>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Notes</label>
+                <textarea value={recurringForm.notes || ""} onChange={e => setRecurringForm(f => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...fieldStyle(recurringForm.notes), resize: "none" }} />
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--g-ink2)", fontFamily: "var(--g-sans)", fontSize: 14 }}>
+                <input type="checkbox" checked={recurringForm.active !== false} onChange={e => setRecurringForm(f => ({ ...f, active: e.target.checked }))} />
+                Active
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button onClick={saveRecurring} style={primaryBtnStyle}>Save</button>
+              <button onClick={() => setRecurringForm(null)} style={cancelBtnStyle}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteId && (
         <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setDeleteId(null)}>
           <div className="modal-box" style={{ maxWidth: 400, textAlign: "center" }}>
