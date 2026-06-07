@@ -11,6 +11,17 @@ const MODULE_LABELS = {
   calendar: "Calendar",
 };
 
+const MODULE_FEATURES = {
+  invoices: "invoices",
+  documents: "documents",
+  contacts: "contacts",
+  inventory: "inventory",
+  meal: "meal",
+  tasks: "tasks",
+  maintenance: "maintenance",
+  calendar: "calendar",
+};
+
 const normalize = (value) => String(value || "").toLowerCase();
 
 const compact = (values) => values.filter(Boolean).map(String);
@@ -31,74 +42,75 @@ const formatDate = (value) => {
   return date.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
 };
 
-function buildSearchIndex(data) {
+function buildSearchIndex(data, enabledFeatures = {}) {
   const tasks = Array.isArray(data.tasks?.items) ? data.tasks.items : [];
+  const enabled = (module) => enabledFeatures[module] !== false;
 
   return [
-    ...(data.invoices || []).map((invoice) => makeResult(
+    ...(enabled("invoices") ? (data.invoices || []).map((invoice) => makeResult(
       "invoices",
       invoice,
       invoice.vendor,
       [invoice.invoiceNo && `#${invoice.invoiceNo}`, invoice.category, invoice.status],
       [invoice.vendor, invoice.invoiceNo, invoice.notes, invoice.category]
-    )),
-    ...(data.documents || []).map((document) => makeResult(
+    )) : []),
+    ...(enabled("documents") ? (data.documents || []).map((document) => makeResult(
       "documents",
       document,
       document.title,
       [document.category, document.originalName],
       [document.title, document.category, document.notes, document.originalName]
-    )),
-    ...(data.contacts || []).map((contact) => makeResult(
+    )) : []),
+    ...(enabled("contacts") ? (data.contacts || []).map((contact) => makeResult(
       "contacts",
       contact,
       contact.name,
       [contact.company || contact.category, contact.role, contact.phone, contact.email],
       [contact.name, contact.company, contact.role, contact.category, contact.phone, contact.email, contact.notes]
-    )),
-    ...(data.inventory || []).map((item) => makeResult(
+    )) : []),
+    ...(enabled("inventory") ? (data.inventory || []).map((item) => makeResult(
       "inventory",
       item,
       item.name,
       [item.brand, item.model, item.location || item.room],
       [item.name, item.brand, item.model, item.serialNo || item.serial, item.location, item.room, item.notes]
-    )),
-    ...(data.recipes || []).map((recipe) => makeResult(
+    )) : []),
+    ...(enabled("meal") ? (data.recipes || []).map((recipe) => makeResult(
       "meal",
       recipe,
       recipe.name,
       [recipe.category, recipe.description],
       [recipe.name, recipe.category, recipe.description, recipe.ingredients, recipe.instructions]
-    )),
-    ...tasks.map((task) => makeResult(
+    )) : []),
+    ...(enabled("tasks") ? tasks.map((task) => makeResult(
       "tasks",
       task,
       task.title,
       [task.type === "weekday" ? "Recurring" : "One time", task.date],
       [task.title, task.notes, task.type, task.date]
-    )),
-    ...(data.maintenanceTasks || []).map((task) => makeResult(
+    )) : []),
+    ...(enabled("maintenance") ? (data.maintenanceTasks || []).map((task) => makeResult(
       "maintenance",
       task,
       task.title,
       [task.frequency, task.completed ? "Completed" : "Pending", formatDate(task.nextDue)],
       [task.title, task.frequency, task.instructions, task.nextDue]
-    )),
-    ...(data.calendarEvents || []).map((event) => makeResult(
+    )) : []),
+    ...(enabled("calendar") ? (data.calendarEvents || []).map((event) => makeResult(
       "calendar",
       event,
       event.title,
       [formatDate(event.start), event.location],
       [event.title, event.location, event.description, event.start, event.end]
-    )),
+    )) : []),
   ].filter((result) => result.title && result.haystack);
 }
 
-export default function GlobalSearch({ open, onClose, onNavigate, searchData }) {
+export default function GlobalSearch({ open, onClose, onNavigate, searchData, enabledFeatures = {} }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
 
-  const index = useMemo(() => buildSearchIndex(searchData), [searchData]);
+  const index = useMemo(() => buildSearchIndex(searchData, enabledFeatures), [searchData, enabledFeatures]);
   const groupedResults = useMemo(() => {
     const q = normalize(query.trim());
     if (!q) return [];
@@ -115,6 +127,12 @@ export default function GlobalSearch({ open, onClose, onNavigate, searchData }) 
       }, {})
     ).map(([module, results]) => ({ module, label: MODULE_LABELS[module] || module, results }));
   }, [index, query]);
+  const searchableLabels = useMemo(() => (
+    Object.entries(MODULE_LABELS)
+      .filter(([module]) => enabledFeatures[MODULE_FEATURES[module]] !== false)
+      .map(([, label]) => label.toLowerCase())
+      .join(", ")
+  ), [enabledFeatures]);
 
   useEffect(() => {
     if (!open) return;
@@ -160,7 +178,7 @@ export default function GlobalSearch({ open, onClose, onNavigate, searchData }) 
         <div className="global-search-results">
           {!hasQuery && (
             <div className="global-search-empty">
-              Search invoices, documents, contacts, inventory, recipes, tasks, maintenance, and calendar events.
+              Search {searchableLabels || "enabled features"}.
             </div>
           )}
 

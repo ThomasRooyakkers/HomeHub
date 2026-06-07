@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { apiFetch } from "../lib/api";
 
 const CATEGORIES = [
-  { id: "shopping",    label: "Shopping item" },
-  { id: "invoice",     label: "Invoice" },
-  { id: "maintenance", label: "Maintenance task" },
-  { id: "plant",       label: "Plant" },
+  { id: "shopping",    feature: "shopping", label: "Shopping item" },
+  { id: "invoice",     feature: "invoices", label: "Invoice" },
+  { id: "maintenance", feature: "maintenance", label: "Maintenance task" },
+  { id: "plant",       feature: "plants", label: "Plant" },
 ];
 
 const FREQUENCIES = ["daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
@@ -69,8 +69,14 @@ export default function QuickAddModal({
   setMaintenance,
   setPlants,
   apiEnabled,
+  queueMutation,
   showToast,
+  enabledFeatures = {},
 }) {
+  const availableCategories = useMemo(
+    () => CATEGORIES.filter(c => enabledFeatures[c.feature] !== false),
+    [enabledFeatures]
+  );
   const [category, setCategory] = useState("shopping");
   const [saving, setSaving] = useState(false);
 
@@ -95,6 +101,12 @@ export default function QuickAddModal({
     const raf = requestAnimationFrame(() => firstRef.current?.focus());
     return () => cancelAnimationFrame(raf);
   }, [category]);
+
+  useEffect(() => {
+    if (availableCategories.length && !availableCategories.some(c => c.id === category)) {
+      setCategory(availableCategories[0].id);
+    }
+  }, [availableCategories, category]);
 
   useEffect(() => {
     if (shopping.stores?.length) {
@@ -133,6 +145,8 @@ export default function QuickAddModal({
           } catch {
             setShopping(s => ({ ...s, items: s.items.filter(i => i.id !== newItem.id) }));
           }
+        } else {
+          queueMutation?.({ method: "POST", endpoint: "/api/shopping/items", body: { storeId: store.id, name: shoppingName.trim() }, resource: "shopping", tempId: newItem.id });
         }
         showToast("Item added to shopping list");
       }
@@ -160,6 +174,8 @@ export default function QuickAddModal({
           } catch {
             setInvoices(prev => prev.filter(i => i.id !== newInvoice.id));
           }
+        } else {
+          queueMutation?.({ method: "POST", endpoint: "/api/invoices", body: newInvoice, resource: "invoices", tempId: newInvoice.id });
         }
         showToast("Invoice added");
       }
@@ -186,6 +202,8 @@ export default function QuickAddModal({
           } catch {
             setMaintenance(prev => prev.filter(t => t.id !== newTask.id));
           }
+        } else {
+          queueMutation?.({ method: "POST", endpoint: "/api/maintenance", body: newTask, resource: "maintenance", tempId: newTask.id });
         }
         showToast("Maintenance task added");
       }
@@ -212,6 +230,8 @@ export default function QuickAddModal({
           } catch {
             setPlants(prev => prev.filter(p => p.id !== newPlant.id));
           }
+        } else {
+          queueMutation?.({ method: "POST", endpoint: "/api/plants", body: newPlant, resource: "plants", tempId: newPlant.id });
         }
         showToast("Plant added");
       }
@@ -222,6 +242,8 @@ export default function QuickAddModal({
     }
   };
 
+  if (availableCategories.length === 0) return null;
+
   return (
     <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={handleKeyDown}>
       <div style={modal} role="dialog" aria-modal="true">
@@ -231,7 +253,7 @@ export default function QuickAddModal({
 
         {/* Category pills */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 22 }}>
-          {CATEGORIES.map(c => (
+          {availableCategories.map(c => (
             <button
               key={c.id}
               onClick={() => setCategory(c.id)}

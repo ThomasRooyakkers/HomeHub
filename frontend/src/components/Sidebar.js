@@ -79,7 +79,7 @@ const SearchIcon = () => (
   </svg>
 );
 
-export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout, settings, onOpenQuickAdd, onOpenSearch }) {
+export default function Sidebar({ activeTool, setActiveTool, tools, showToast, currentUser, onLogout, settings, syncStatus = "online", syncQueueCount = 0, onOpenQuickAdd, onOpenSearch }) {
   const visibleTools = tools.filter(t => t.id !== "admin");
   const isAdmin = currentUser?.role === "admin";
   const appName   = settings?.appName       || "HomeHub";
@@ -150,6 +150,16 @@ export default function Sidebar({ activeTool, setActiveTool, tools, showToast, c
       {/* User */}
       {currentUser && (
         <div className="sidebar-user">
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+            padding: "7px 9px", borderRadius: 10,
+            background: syncStatus === "online" ? "var(--g-sage-bg)" : syncStatus === "syncing" ? "var(--g-honey-bg)" : "var(--g-brick-bg)",
+            color: syncStatus === "online" ? "var(--g-sage-dark)" : syncStatus === "syncing" ? "var(--g-honey)" : "var(--g-brick)",
+            fontFamily: "var(--g-sans)", fontSize: 12, fontWeight: 700,
+          }}>
+            <span>{syncStatus === "syncing" ? "Syncing" : syncStatus === "online" ? "Online" : "Offline"}</span>
+            {syncQueueCount > 0 && <span>{syncQueueCount} queued</span>}
+          </div>
           <p style={{ margin: 0, fontFamily: "var(--g-sans)", fontSize: 12, color: "var(--g-muted)" }}>
             Signed in as{" "}
             <strong style={{ color: "var(--g-ink2)", fontWeight: 600 }}>{currentUser.username}</strong>

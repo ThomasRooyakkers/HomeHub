@@ -19,6 +19,8 @@ module.exports = {
   DOCUMENTS_FILE: path.join(DATA_DIR, "documents.json"),
   CONTACTS_FILE: path.join(DATA_DIR, "contacts.json"),
   INVENTORY_FILE: path.join(DATA_DIR, "inventory.json"),
+  ACTIVITY_FILE: path.join(DATA_DIR, "activity.json"),
+  RECURRING_INVOICES_FILE: path.join(DATA_DIR, "recurringInvoices.json"),
   UPLOAD_MAX_MB: parseInt(process.env.UPLOAD_MAX_MB || "10", 10),
   CORS_ORIGIN: process.env.CORS_ORIGIN || null,
   SESSION_SECRET: process.env.SESSION_SECRET || null,

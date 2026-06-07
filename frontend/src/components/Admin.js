@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "../lib/api";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK"];
+const CSV_RESOURCES = ["invoices", "documents", "contacts", "inventory", "recipes", "maintenance", "plants"];
 
 const labelStyle = { fontSize: 12, color: "var(--g-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" };
 const inputStyle = { width: "100%", background: "#fff", border: "1px solid var(--g-hair)", borderRadius: 12, padding: "11px 14px", fontSize: 14, fontFamily: "inherit", color: "var(--g-ink)", boxSizing: "border-box" };
@@ -15,7 +16,7 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function Admin({ currentUser, settings, applySettings, apiEnabled, showToast }) {
+export default function Admin({ currentUser, settings, applySettings, apiEnabled, showToast, tools = [] }) {
   const [tab, setTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
@@ -23,6 +24,10 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
   const [addForm, setAddForm] = useState(null);
   const [pwdForm, setPwdForm] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [activity, setActivity] = useState([]);
+  const [activityFilters, setActivityFilters] = useState({ user: "", resource: "", action: "" });
+  const restoreRef = useRef();
+  const featureOptions = tools.filter(tool => !["dashboard", "admin"].includes(tool.id));
 
   useEffect(() => { setSettingsForm(settings); }, [settings]);
 
@@ -30,6 +35,7 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
     if (!apiEnabled) return;
     if (tab === "users") loadUsers();
     if (tab === "stats") loadStats();
+    if (tab === "activity") loadActivity();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, apiEnabled]);
 
@@ -38,6 +44,23 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
   };
   const loadStats = async () => {
     try { const d = await apiFetch("/api/admin/stats"); if (d) setStats(d); } catch {}
+  };
+  const loadActivity = async () => {
+    const params = new URLSearchParams(Object.entries(activityFilters).filter(([, v]) => v));
+    try { const d = await apiFetch(`/api/activity${params.toString() ? `?${params}` : ""}`); if (d) setActivity(d); } catch {}
+  };
+
+  const downloadUrl = (url) => { window.location.href = url; };
+
+  const restoreBackup = async (file) => {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const result = await apiFetch("/api/admin/restore", { method: "POST", body: fd });
+      if (result) showToast("Backup restored");
+    } catch (err) { showToast(err.message || "Restore failed", "danger"); }
+    if (restoreRef.current) restoreRef.current.value = "";
   };
 
   const saveSettings = async () => {
@@ -89,6 +112,8 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
     { id: "users", label: "Users" },
     { id: "stats", label: "System" },
     { id: "settings", label: "Settings" },
+    { id: "data", label: "Data" },
+    { id: "activity", label: "Activity" },
   ];
 
   return (
@@ -240,9 +265,118 @@ export default function Admin({ currentUser, settings, applySettings, apiEnabled
                 onChange={e => setSettingsForm(f => ({ ...f, location: e.target.value }))}
               />
             </div>
+            {featureOptions.length > 0 && (
+              <div>
+                <label style={labelStyle}>Enabled features</label>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {featureOptions.map(feature => {
+                    const enabled = (settingsForm.enabledFeatures || {})[feature.id] !== false;
+                    return (
+                      <label
+                        key={feature.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          padding: "10px 12px",
+                          border: "1px solid var(--g-hair)",
+                          borderRadius: 12,
+                          background: enabled ? "var(--g-bg)" : "var(--g-hair2)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span>
+                          <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--g-ink)", fontFamily: "var(--g-sans)" }}>
+                            {feature.name}
+                          </span>
+                          <span style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--g-muted)", fontFamily: "var(--g-sans)" }}>
+                            {enabled ? "Visible in the app" : "Hidden from navigation, search, quick add, and dashboard shortcuts"}
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={e => setSettingsForm(f => ({
+                            ...f,
+                            enabledFeatures: {
+                              ...(f.enabledFeatures || {}),
+                              [feature.id]: e.target.checked,
+                            },
+                          }))}
+                          style={{ width: 18, height: 18, accentColor: "var(--g-sage)", flexShrink: 0 }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <button style={{ ...btnPrimary, alignSelf: "flex-start" }} onClick={saveSettings}>Save settings</button>
+        </div>
+      )}
+
+      {tab === "data" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <h3 style={{ margin: 0, fontSize: 20, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Data safety</h3>
+          <div style={{ background: "var(--g-card)", borderRadius: 20, padding: "22px 24px", boxShadow: "var(--g-shadow)", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <button style={btnPrimary} onClick={() => downloadUrl("/api/admin/export.zip")}>Download backup</button>
+              <input ref={restoreRef} type="file" accept=".zip,application/zip" onChange={e => restoreBackup(e.target.files?.[0])} style={{ display: "none" }} />
+              <button style={btnSecondary} onClick={() => restoreRef.current?.click()}>Restore backup</button>
+            </div>
+            <div>
+              <label style={labelStyle}>CSV exports</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {CSV_RESOURCES.map(resource => (
+                  <button key={resource} style={btnSecondary} onClick={() => downloadUrl(`/api/admin/export/${resource}.csv`)}>
+                    {resource}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "activity" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>Activity log</h3>
+            <button style={btnSecondary} onClick={loadActivity}>Refresh</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+            {["user", "resource", "action"].map(key => (
+              <input
+                key={key}
+                style={inputStyle}
+                placeholder={key}
+                value={activityFilters[key]}
+                onChange={e => setActivityFilters(f => ({ ...f, [key]: e.target.value }))}
+                onBlur={loadActivity}
+              />
+            ))}
+          </div>
+          <div style={{ background: "var(--g-card)", borderRadius: 20, boxShadow: "var(--g-shadow)", overflow: "hidden" }}>
+            {activity.length === 0 ? (
+              <p style={{ color: "var(--g-muted)", textAlign: "center", padding: "40px 0", fontFamily: "var(--g-sans)" }}>No activity found.</p>
+            ) : activity.slice(0, 100).map((item, idx) => (
+              <div key={item.id || idx} style={{ display: "flex", gap: 14, padding: "14px 20px", borderTop: idx > 0 ? "1px solid var(--g-hair2)" : "none", alignItems: "flex-start" }}>
+                <div style={{ width: 10, height: 10, borderRadius: 999, background: "var(--g-sage)", marginTop: 6, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, color: "var(--g-ink)", fontWeight: 700, fontFamily: "var(--g-sans)" }}>
+                    {item.resource} · {item.action}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--g-muted)", marginTop: 3, fontFamily: "var(--g-sans)" }}>
+                    {item.user?.username || "system"} · {item.timestamp ? new Date(item.timestamp).toLocaleString() : ""}
+                  </div>
+                  {item.label && <div style={{ fontSize: 13, color: "var(--g-ink2)", marginTop: 4, fontFamily: "var(--g-sans)" }}>{item.label}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

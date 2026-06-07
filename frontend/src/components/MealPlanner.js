@@ -38,7 +38,7 @@ const CAT_STYLES = {
 };
 const getCatStyle = (cat) => CAT_STYLES[cat] || { bg: "var(--g-bg2)", color: "var(--g-ink2)" };
 
-export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan, apiEnabled, showToast }) {
+export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan, shopping = { stores: [], items: [] }, setShopping, apiEnabled, queueMutation, showToast }) {
   const [mealForm, setMealForm] = useState(null);
   const [recipeForm, setRecipeForm] = useState(null);
   const [recipeView, setRecipeView] = useState(null);
@@ -47,6 +47,7 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
   const [recipeSearchTerm, setRecipeSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [deleteRecipeId, setDeleteRecipeId] = useState(null);
+  const [shoppingDraft, setShoppingDraft] = useState(null);
   const recipeFileRef = useRef();
 
   const todayKey = useTodayKey();
@@ -74,6 +75,7 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
   }, [mealForm, recipeForm, recipeView, deleteRecipeId]);
 
   const getRecipeById = (id) => recipes.find(r => String(r.id) === String(id)) || null;
+  const defaultStoreId = shopping.stores?.[0]?.id || "";
 
   const filteredRecipes = recipes.filter(r => {
     if (categoryFilter === "Favourites" && !r.isFavourite) return false;
@@ -115,6 +117,8 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
     showToast("Meal saved");
     if (apiEnabled) {
       await apiFetch("/api/meal-plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nextPlan) });
+    } else {
+      queueMutation?.({ method: "PUT", endpoint: "/api/meal-plan", body: nextPlan, resource: "mealPlan" });
     }
   };
 
@@ -125,6 +129,8 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
     showToast("Meal removed", "danger");
     if (apiEnabled) {
       await apiFetch("/api/meal-plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
+    } else {
+      queueMutation?.({ method: "PUT", endpoint: "/api/meal-plan", body: next, resource: "mealPlan" });
     }
   };
 
@@ -168,8 +174,11 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
 
     if (recipeForm.id) {
       setRecipes(prev => prev.map(r => r.id === recipeForm.id ? { ...payload } : r));
+      if (!_imageFile) queueMutation?.({ method: "PUT", endpoint: `/api/recipes/${recipeForm.id}`, body: payload, resource: "recipes", tempId: recipeForm.id });
     } else {
-      setRecipes(prev => [...prev, { ...payload, id: Date.now() }]);
+      const local = { ...payload, id: Date.now() };
+      setRecipes(prev => [...prev, local]);
+      if (!_imageFile) queueMutation?.({ method: "POST", endpoint: "/api/recipes", body: local, resource: "recipes", tempId: local.id });
     }
     showToast(recipeForm.id ? "Recipe updated" : "Recipe added");
     setRecipeForm(null);
@@ -177,6 +186,7 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
 
   const confirmDeleteRecipe = async () => {
     if (apiEnabled) await apiFetch(`/api/recipes/${deleteRecipeId}`, { method: "DELETE" });
+    else queueMutation?.({ method: "DELETE", endpoint: `/api/recipes/${deleteRecipeId}`, resource: "recipes", tempId: deleteRecipeId });
     setRecipes(prev => prev.filter(r => r.id !== deleteRecipeId));
     setMealPlan(prev =>
       Object.fromEntries(
@@ -187,6 +197,53 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
     );
     setDeleteRecipeId(null);
     showToast("Recipe deleted", "danger");
+  };
+
+  const openShoppingDraft = (source, recipe = null) => {
+    const selectedRecipes = source === "week"
+      ? weekDays.map(day => mealPlan[day.key]?.recipeId).filter(Boolean).map(getRecipeById).filter(Boolean)
+      : [recipe].filter(Boolean);
+    const seen = new Set();
+    const items = selectedRecipes.flatMap(r =>
+      parseIngredients(r.ingredients).map(name => ({ name, recipeId: r.id, recipeName: r.name }))
+    ).filter(item => {
+      const key = item.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (!items.length) return showToast("No ingredients to add", "danger");
+    setShoppingDraft({ source, storeId: defaultStoreId, items, checked: Object.fromEntries(items.map((_, i) => [i, true])) });
+  };
+
+  const addShoppingDraft = async () => {
+    if (!shoppingDraft?.storeId) return showToast("Choose a target store first", "danger");
+    const selected = shoppingDraft.items.filter((_, i) => shoppingDraft.checked[i]);
+    const existing = new Set((shopping.items || [])
+      .filter(item => String(item.storeId) === String(shoppingDraft.storeId) && !item.checked)
+      .map(item => item.name?.trim().toLowerCase()));
+    const toAdd = selected.filter(item => !existing.has(item.name.trim().toLowerCase()));
+    if (!toAdd.length) { setShoppingDraft(null); return showToast("All selected ingredients are already on that list"); }
+
+    if (apiEnabled) {
+      const created = [];
+      for (const item of toAdd) {
+        const result = await apiFetch("/api/shopping/items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: item.name, storeId: shoppingDraft.storeId, source: shoppingDraft.source, recipeId: item.recipeId }),
+        });
+        if (result) created.push(result);
+      }
+      setShopping?.(prev => ({ ...prev, items: [...(prev.items || []), ...created] }));
+    } else {
+      const maxId = (shopping.items || []).reduce((m, item) => Math.max(m, item.id || 0), 0);
+      const created = toAdd.map((item, i) => ({ id: maxId + i + 1, name: item.name, storeId: shoppingDraft.storeId, checked: false, source: shoppingDraft.source, recipeId: item.recipeId }));
+      created.forEach(item => queueMutation?.({ method: "POST", endpoint: "/api/shopping/items", body: { name: item.name, storeId: item.storeId, source: item.source, recipeId: item.recipeId }, resource: "shopping", tempId: item.id }));
+      setShopping?.(prev => ({ ...prev, items: [...(prev.items || []), ...created] }));
+    }
+    setShoppingDraft(null);
+    showToast(`${toAdd.length} ingredient${toAdd.length === 1 ? "" : "s"} added`);
   };
 
   return (
@@ -214,6 +271,9 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--g-ink)" }}>This week</h2>
           <span style={{ fontSize: 12, color: "var(--g-muted)" }}>tap a day to plan or cook</span>
+          <button onClick={() => openShoppingDraft("week")} style={{ marginLeft: "auto", background: "var(--g-sage-bg)", border: "1px solid var(--g-sage)", color: "var(--g-sage-dark)", borderRadius: 12, padding: "7px 12px", cursor: "pointer", fontSize: 12.5, fontWeight: 600, fontFamily: "var(--g-sans)" }}>
+            Add week ingredients
+          </button>
         </div>
         <div className="week-strip-grid">
           {weekDays.map(day => {
@@ -506,9 +566,14 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
               {/* Ingredients */}
               {recipeView.ingredients && (
                 <div>
-                  <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.9, color: "var(--g-sage)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.9, color: "var(--g-sage)" }}>
                     Ingredients <span style={{ color: "var(--g-muted)", fontSize: 10.5, textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>· tap to check off</span>
                   </p>
+                    <button onClick={() => openShoppingDraft("recipe", recipeView)} style={{ background: "var(--g-sage-bg)", border: "1px solid var(--g-sage)", color: "var(--g-sage-dark)", borderRadius: 10, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "var(--g-sans)", whiteSpace: "nowrap" }}>
+                      Add to list
+                    </button>
+                  </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                     {parseIngredients(recipeView.ingredients).map((item, i) => {
                       const key = `${recipeView.id}-${i}`;
@@ -550,6 +615,38 @@ export default function MealPlanner({ recipes, setRecipes, mealPlan, setMealPlan
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shoppingDraft && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShoppingDraft(null)}>
+          <div className="modal-box" style={{ maxWidth: 520 }}>
+            <h2 style={{ margin: "0 0 18px", fontSize: 22, fontWeight: 400, fontFamily: "var(--g-serif)", color: "var(--g-ink)" }}>
+              Add ingredients
+            </h2>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div>
+                <label style={labelStyle}>Target store</label>
+                <select value={shoppingDraft.storeId} onChange={e => setShoppingDraft(p => ({ ...p, storeId: e.target.value }))} style={inputStyle}>
+                  <option value="">Choose a store</option>
+                  {(shopping.stores || []).map(store => <option key={store.id} value={store.id}>{store.name}</option>)}
+                </select>
+              </div>
+              <div style={{ maxHeight: 300, overflow: "auto", border: "1px solid var(--g-hair)", borderRadius: 14, padding: 8 }}>
+                {shoppingDraft.items.map((item, i) => (
+                  <label key={`${item.recipeId}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10, cursor: "pointer", color: "var(--g-ink)", fontSize: 14 }}>
+                    <input type="checkbox" checked={!!shoppingDraft.checked[i]} onChange={e => setShoppingDraft(p => ({ ...p, checked: { ...p.checked, [i]: e.target.checked } }))} />
+                    <span style={{ flex: 1 }}>{item.name}</span>
+                    {shoppingDraft.source === "week" && <span style={{ color: "var(--g-muted)", fontSize: 12 }}>{item.recipeName}</span>}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={modalFooterStyle}>
+              <button onClick={() => setShoppingDraft(null)} style={cancelBtnStyle}>Cancel</button>
+              <button onClick={addShoppingDraft} style={primaryBtnStyle}>Add selected</button>
             </div>
           </div>
         </div>

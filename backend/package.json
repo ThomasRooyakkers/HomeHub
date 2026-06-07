@@ -8,6 +8,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.18.2",
