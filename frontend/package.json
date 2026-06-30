@@ -2,8 +2,8 @@
   "name": "home-hub-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "A green-themed home hub dashboard with invoices, meal planning, recipes, and maintenance tracking.",
-  "author": "Home Hub",
+  "description": "React frontend for the HomeHub household management dashboard.",
+  "author": "HomeHub",
   "license": "MIT",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",

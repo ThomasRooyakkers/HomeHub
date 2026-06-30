@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "${APP_PORT:-5080}:80"
     volumes:
       - homehub_data:/data
     networks:
@@ -17,6 +19,8 @@ services:
       start_period: 10s
 
   tunnel:
+    profiles:
+      - tunnel
     image: cloudflare/cloudflared:2026.5.1
     restart: unless-stopped
     command: tunnel --no-autoupdate run
