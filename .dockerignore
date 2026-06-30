@@ -1,6 +1,11 @@
 **/node_modules
 **/build
 **/.git
+**/.claude
+**/.dev-data
+**/coverage
 *.log
 .env
+.env.local
+.env.*.local
 .DS_Store

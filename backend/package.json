@@ -1,7 +1,7 @@
 {
   "name": "home-hub-backend",
   "version": "1.0.0",
-  "description": "Backend API for invoice file uploads and storage in the Home Hub dashboard.",
+  "description": "Express API for HomeHub household data, uploads, auth, backups, calendar import, and OCR.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
