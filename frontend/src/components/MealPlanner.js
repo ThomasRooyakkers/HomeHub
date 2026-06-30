@@ -17,7 +17,7 @@ function getWeekNumber(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-function parseIngredients(str) {
+export function parseIngredients(str) {
   if (!str) return [];
   const lines = str.split("\n").map(s => s.trim()).filter(Boolean);
   if (lines.length > 1) return lines;
