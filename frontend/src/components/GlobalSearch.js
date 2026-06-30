@@ -42,7 +42,7 @@ const formatDate = (value) => {
   return date.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
 };
 
-function buildSearchIndex(data, enabledFeatures = {}) {
+export function buildSearchIndex(data, enabledFeatures = {}) {
   const tasks = Array.isArray(data.tasks?.items) ? data.tasks.items : [];
   const enabled = (module) => enabledFeatures[module] !== false;
 

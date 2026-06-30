@@ -1,0 +1,10 @@
+{
+  "name": "homehub",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test -- --runInBand",
+    "test:smoke": "npm --prefix frontend run test:e2e"
+  }
+}

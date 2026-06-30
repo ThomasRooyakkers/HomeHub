@@ -4,7 +4,8 @@
   "description": "Backend API for invoice file uploads and storage in the Home Hub dashboard.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js"
   },
   "license": "MIT",
   "dependencies": {
@@ -17,5 +18,8 @@
     "multer": "^1.4.5-lts.1",
     "session-file-store": "^1.5.0",
     "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
   }
 }

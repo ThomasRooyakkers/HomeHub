@@ -1383,4 +1383,11 @@ app.delete("/api/inventory/:id", (req, res, next) => {
 
 app.use(errorHandler);
 
-app.listen(PORT, "0.0.0.0", () => console.log(`Backend running on :${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", () => console.log(`Backend running on :${PORT}`));
+}
+
+module.exports = {
+  app,
+  parseICS,
+};

@@ -1,9 +1,13 @@
 # Roadmap Progress
 
-Updated: 2026-06-06
+Updated: 2026-06-30
 
 Implemented in this pass:
 
+- Backend API test coverage for auth/admin guards, invoice CRUD, settings updates, upload validation, backup ZIP export, and calendar ICS parsing/deduplication.
+- Frontend helper coverage for ingredient parsing and global search indexing.
+- Playwright smoke coverage for login, dashboard load, quick-add invoice, shopping item creation, meal planner navigation, and admin stats.
+- Root test scripts for backend, frontend, combined, and browser smoke runs.
 - Backup, restore, and CSV export backend endpoints.
 - Admin Data tab for backup download, ZIP restore, and CSV exports.
 - Activity log storage, endpoints, filters, and Admin Activity tab.
@@ -17,6 +21,12 @@ Implemented in this pass:
 
 Verified:
 
+- `npm test` passes.
+- `npm run test:backend` passes.
+- `npm run test:frontend` passes.
+- `npm run test:smoke` passes.
+- `frontend npm run build` passes.
+- The Playwright smoke server starts and `/api/health` returns ok.
 - `backend/server.js` passes `node --check`.
 - `backend/middleware/upload.js` passes `node --check`.
 - `frontend` production build passes.
@@ -25,4 +35,3 @@ Verified:
 Not completed in this pass:
 
 - File upload offline queueing remains intentionally deferred.
-- Broader backend tests and Playwright smoke coverage.

@@ -176,6 +176,36 @@ CORS_ORIGIN=http://localhost:3000
 
 ---
 
+## Testing
+
+Run the focused backend and frontend test suites:
+
+```bash
+npm test
+```
+
+Individual suites:
+
+```bash
+npm run test:backend
+npm run test:frontend
+```
+
+Run the browser smoke test:
+
+```bash
+npm run test:smoke
+```
+
+The smoke test builds the frontend, starts a production-like local server that mounts the real backend and static build, then drives the login/dashboard/quick-add/shopping/meals/admin flow with Playwright. On a fresh Linux/WSL install, install Playwright's Chromium system dependencies first:
+
+```bash
+cd frontend
+npx playwright install-deps chromium
+```
+
+---
+
 ## Production deployment
 
 The production setup uses:
@@ -245,7 +275,7 @@ Feedback, suggestions, and pull requests are welcome, especially around:
 * [ ] Add first release
 * [ ] Add backup and restore documentation
 * [ ] Add import/export tools
-* [ ] Add automated tests
+* [x] Add automated tests
 * [ ] Add example deployment guide
 * [ ] Add more granular user permissions
 
